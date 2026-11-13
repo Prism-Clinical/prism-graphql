@@ -1,0 +1,1678 @@
+HYPERTENSIVE DISORDERS IN PREGNANCY: COMPREHENSIVE CARE PATHWAY
+(U.S. Guidelines - ACOG, USPSTF, SMFM)
+
+==============================================================================
+BACKGROUND AND EPIDEMIOLOGY
+==============================================================================
+
+Hypertensive disorders of pregnancy (HDP) affect 5-10% of pregnancies in the United States and represent a leading cause of maternal and perinatal morbidity and mortality. These disorders encompass a spectrum of conditions ranging from mild gestational hypertension to life-threatening eclampsia and HELLP syndrome. Without appropriate management, severe complications can arise including maternal stroke, seizures, organ failure, placental abruption, and fetal growth restriction.
+
+Modern evidence-based care has dramatically improved outcomes through three key interventions: (1) universal first-trimester risk assessment with low-dose aspirin prophylaxis for eligible patients initiated before 16 weeks' gestation; (2) aggressive treatment of severe-range hypertension (≥160/110 mmHg) within 30-60 minutes to prevent maternal stroke; and (3) delivery timing stratified by gestational age and disease severity. This care pathway integrates ACOG Practice Bulletin 222 (2020), the 2022 CHAP trial recommendations, and 2021 USPSTF guidelines to provide a comprehensive framework for ambulatory prenatal and inpatient obstetric care.
+
+Key Clinical Terminology:
+- Gestational hypertension: New-onset hypertension after 20 weeks without proteinuria or end-organ dysfunction
+- Preeclampsia: Hypertension with proteinuria or end-organ dysfunction after 20 weeks
+- Severe features: Specific clinical or laboratory findings indicating high-risk disease requiring intensive monitoring
+- HELLP syndrome: Hemolysis, Elevated Liver enzymes, Low Platelets - a severe variant of preeclampsia
+- Eclampsia: New-onset seizures in the setting of preeclampsia
+- Superimposed preeclampsia: New preeclampsia features developing in patients with chronic hypertension
+
+SNOMED CT Terminology:
+- Gestational hypertension: 48194001
+- Preeclampsia: 15938005
+- Severe preeclampsia: 7154007
+- HELLP syndrome: 36897000
+- Eclampsia: 15394000
+- Chronic hypertension complicating pregnancy: 10752641000119102
+- Superimposed preeclampsia: 44169009
+
+==============================================================================
+SECTION 1: DIAGNOSTIC CRITERIA AND CLASSIFICATION
+==============================================================================
+
+1.1 BLOOD PRESSURE MEASUREMENT STANDARDS
+
+Accurate blood pressure measurement is foundational to diagnosis and management. Proper technique includes:
+
+Equipment Requirements:
+- Appropriately sized cuff with bladder encircling ≥80% of upper arm circumference
+- Automated devices validated for pregnancy and preeclampsia (many devices underestimate BP in preeclampsia)
+- Mercury sphygmomanometers or aneroid devices calibrated within past 6 months
+
+Measurement Technique:
+- Patient seated after 10-minute rest period
+- Back supported, feet flat on floor, arm at heart level
+- No caffeine or tobacco use for 30 minutes prior
+- Two measurements at least 4 hours apart for diagnosis (except severe-range BP can be confirmed within minutes)
+- Use of Korotkoff phase V (disappearance of sound) for diastolic reading
+
+Hypertension Definition: Systolic BP ≥140 mmHg OR diastolic BP ≥90 mmHg on two occasions
+Severe-range BP: Systolic ≥160 mmHg OR diastolic ≥110 mmHg (single measurement sufficient for treatment initiation)
+
+LOINC Codes for Blood Pressure Documentation:
+- Systolic blood pressure: 8480-6
+- Diastolic blood pressure: 8462-4
+- Blood pressure panel: 85354-9
+
+1.2 CLASSIFICATION OF HYPERTENSIVE DISORDERS
+
+CHRONIC HYPERTENSION (Pre-existing or Early-Onset)
+Definition: Hypertension diagnosed before pregnancy OR before 20 weeks' gestation, persisting >12 weeks postpartum
+
+Diagnostic Criteria:
+- BP ≥140/90 mmHg documented before pregnancy or <20 weeks
+- May be primary (essential) or secondary (renal disease, renovascular disease, endocrine disorders)
+- Does not include "white coat hypertension" (elevated in clinic but normal on home monitoring)
+
+ICD-10-CM Codes:
+- Pre-existing essential hypertension complicating pregnancy: O10.011-O10.03 (by trimester)
+- Pre-existing hypertensive heart disease complicating pregnancy: O10.111-O10.13
+- Pre-existing chronic kidney disease with hypertension: O10.211-O10.23
+- Pre-existing secondary hypertension: O10.411-O10.43
+
+Clinical Significance: 15-25% of patients with chronic hypertension will develop superimposed preeclampsia, which carries significantly higher maternal and fetal risk than either condition alone.
+
+GESTATIONAL HYPERTENSION
+Definition: New-onset hypertension after 20 weeks' gestation without proteinuria or signs of end-organ dysfunction, with normalization of BP by 12 weeks postpartum
+
+Diagnostic Criteria:
+- BP ≥140/90 mmHg on two occasions ≥4 hours apart
+- Onset after 20 weeks' gestation
+- No proteinuria (urine protein/creatinine ratio <0.3, or <300 mg in 24-hour collection)
+- No features of severe disease
+- Resolution by 12 weeks postpartum (if persistent beyond 12 weeks, reclassified as chronic hypertension)
+
+Risk Progression: Approximately 50% of women with gestational hypertension diagnosed before 32 weeks will progress to preeclampsia. Later onset carries lower progression risk (~15-25%).
+
+ICD-10-CM Codes:
+- Gestational hypertension without significant proteinuria, third trimester: O13.3
+- Gestational hypertension without significant proteinuria, complicating childbirth: O13.4
+- Gestational hypertension without significant proteinuria, puerperium: O13.5
+
+PREECLAMPSIA WITHOUT SEVERE FEATURES
+Definition: New-onset hypertension after 20 weeks with proteinuria, without criteria for severe disease
+
+Diagnostic Criteria (ALL of the following required):
+
+Blood Pressure:
+- BP ≥140/90 mmHg on two occasions at least 4 hours apart after 20 weeks' gestation
+
+PLUS Proteinuria:
+- Urine protein/creatinine ratio ≥0.3 (LOINC: 34366-5) OR
+- 24-hour urine protein ≥300 mg (LOINC: 2889-4) OR
+- Urine dipstick 2+ or greater (only if quantitative methods unavailable)
+
+WITHOUT Severe Features:
+- No BP ≥160/110 mmHg
+- No thrombocytopenia (platelets ≥100,000/μL)
+- No renal insufficiency (creatinine <1.1 mg/dL)
+- No elevated liver enzymes (AST/ALT <2× upper limit normal)
+- No pulmonary edema
+- No severe headache, visual disturbances, or RUQ pain
+
+Note: If hypertension is present with end-organ dysfunction (thrombocytopenia, renal insufficiency, elevated liver enzymes, pulmonary edema, or neurologic symptoms) but WITHOUT proteinuria, this constitutes preeclampsia WITH severe features (since these end-organ manifestations are themselves severe features).
+
+ICD-10-CM Codes:
+- Mild to moderate pre-eclampsia, third trimester: O14.03
+- Mild to moderate pre-eclampsia, complicating childbirth: O14.04
+- Mild to moderate pre-eclampsia, puerperium: O14.05
+
+PREECLAMPSIA WITH SEVERE FEATURES
+Definition: Preeclampsia with any single criterion indicating severe disease or significant maternal risk
+
+Diagnostic Criteria (ANY ONE constitutes severe features):
+
+Severe Blood Pressure:
+- Systolic BP ≥160 mmHg OR diastolic BP ≥110 mmHg on two occasions at least 15 minutes apart (while at rest)
+- Can be confirmed with two readings minutes apart to expedite treatment
+- Persistent despite antihypertensive therapy
+
+Hematologic Abnormalities:
+- Platelets <100,000/μL (progressive decline is concerning even if >100,000)
+- Microangiopathic hemolysis: elevated LDH, schistocytes on blood smear, elevated indirect bilirubin
+
+Hepatic Dysfunction:
+- Serum transaminases >2× upper limit of normal
+- Severe persistent right upper quadrant or epigastric pain unresponsive to medication
+- Subcapsular liver hematoma or rupture (rare, emergent)
+
+Renal Dysfunction:
+- Serum creatinine >1.1 mg/dL or doubling of baseline serum creatinine
+- Oliguria <500 mL in 24 hours (less commonly used criterion)
+
+Pulmonary:
+- Pulmonary edema (clinical or radiographic diagnosis)
+
+Neurologic:
+- New-onset, persistent cerebral or visual symptoms (severe headache, visual scotomata, cortical blindness, altered mental status, hyperreflexia with clonus)
+- Stroke
+- Posterior reversible encephalopathy syndrome (PRES)
+
+ICD-10-CM Codes:
+- Severe pre-eclampsia, third trimester: O14.13
+- Severe pre-eclampsia, complicating childbirth: O14.14
+- Severe pre-eclampsia, puerperium: O14.15
+
+HELLP SYNDROME
+Definition: Severe variant of preeclampsia characterized by Hemolysis, Elevated Liver enzymes, and Low Platelets
+
+Diagnostic Criteria (all three required):
+- Hemolysis: LDH ≥600 IU/L (LOINC: 2532-0) OR schistocytes on peripheral smear OR indirect bilirubin >1.2 mg/dL
+- Elevated liver enzymes: AST or ALT >2× upper limit of normal (typically >70 U/L)
+- Low platelets: Platelet count <100,000/μL
+
+Clinical Pearls:
+- 15% of HELLP patients lack hypertension or proteinuria at initial presentation
+- Can develop antepartum (70%), intrapartum (20%), or postpartum (30%)
+- Peak postpartum presentation at 24-48 hours after delivery
+- Associated with 1-2% maternal mortality risk and significant morbidity (DIC, placental abruption, acute renal failure, pulmonary edema, liver hematoma/rupture)
+
+Classification (Tennessee System):
+- Class 1 (severe): Platelets ≤50,000/μL, AST/ALT >70 IU/L, LDH >600 IU/L
+- Class 2 (moderate): Platelets 50,000-100,000/μL
+- Class 3 (mild): Platelets 100,000-150,000/μL
+
+ICD-10-CM Codes:
+- HELLP syndrome, third trimester: O14.23
+- HELLP syndrome, complicating childbirth: O14.24
+- HELLP syndrome, puerperium: O14.25
+
+ECLAMPSIA
+Definition: New-onset grand mal seizures or coma in a patient with preeclampsia that cannot be attributed to other causes
+
+Diagnostic Criteria:
+- Generalized tonic-clonic seizures
+- In setting of preeclampsia (may occur without prior diagnosis)
+- No other identifiable cause (epilepsy, metabolic disorder, intracranial pathology)
+
+Timing:
+- Antepartum (53%): can occur without warning symptoms
+- Intrapartum (19%)
+- Postpartum (28%): up to 10% occur >48 hours postpartum, up to 26% occur >7 days postpartum
+
+ICD-10-CM Codes:
+- Eclampsia in pregnancy, third trimester: O15.03
+- Eclampsia complicating labor and delivery: O15.1
+- Eclampsia in the puerperium: O15.2
+
+SUPERIMPOSED PREECLAMPSIA
+Definition: Development of preeclampsia in a patient with pre-existing chronic hypertension
+
+Diagnostic Criteria (in patient with chronic hypertension):
+
+New-onset proteinuria after 20 weeks:
+- Protein/creatinine ratio ≥0.3 where none was present before 20 weeks
+
+OR
+
+Sudden worsening of hypertension:
+- Sudden increase in BP previously well-controlled
+- Need for escalating antihypertensive therapy
+
+OR
+
+Development of severe features:
+- Any severe feature as defined above (thrombocytopenia, elevated liver enzymes, renal insufficiency, pulmonary edema, neurologic symptoms)
+
+Clinical Significance: Occurs in 15-25% of pregnancies complicated by chronic hypertension. Associated with higher rates of adverse maternal and fetal outcomes compared to either condition alone, including higher rates of preterm delivery, growth restriction, and placental abruption.
+
+ICD-10-CM Codes:
+- Pre-existing hypertension with pre-eclampsia, third trimester: O11.3
+- Pre-existing hypertension with pre-eclampsia, complicating childbirth: O11.4
+- Pre-existing hypertension with pre-eclampsia, puerperium: O11.5
+- (Also code underlying chronic hypertension with O10.xx series)
+
+1.3 DIFFERENTIAL DIAGNOSIS CONSIDERATIONS
+
+When evaluating suspected HDP, consider alternative diagnoses:
+
+- Acute fatty liver of pregnancy: Hypoglycemia, elevated ammonia, coagulopathy, profound hyperbilirubinemia
+- Thrombotic thrombocytopenic purpura (TTP): Fever, severe thrombocytopenia, neurologic changes, renal dysfunction, minimal liver involvement
+- Hemolytic uremic syndrome: Similar to TTP with prominent renal failure
+- Systemic lupus erythematosus flare: Positive serologies, may have pre-existing diagnosis
+- Acute exacerbation of chronic kidney disease: Baseline renal dysfunction, proteinuria may predate 20 weeks
+- Pheochromocytoma: Paroxysmal hypertension, headache, palpitations, diaphoresis
+- Nephrolithiasis or pyelonephritis: Fever, flank pain, pyuria
+- Gastroenteritis or viral syndrome: May cause transient transaminase elevation
+
+==============================================================================
+SECTION 2: FIRST-TRIMESTER RISK ASSESSMENT AND ASPIRIN PROPHYLAXIS
+==============================================================================
+
+2.1 UNIVERSAL RISK STRATIFICATION
+
+All pregnant patients should undergo comprehensive risk assessment for preeclampsia at the first prenatal visit (ideally 8-12 weeks' gestation). The goal is to identify patients who would benefit from low-dose aspirin prophylaxis initiated before 16 weeks' gestation.
+
+Risk Factor Classification System (USPSTF 2021 Recommendations):
+
+HIGH-RISK FACTORS (Any ONE qualifies for aspirin prophylaxis):
+
+1. History of preeclampsia
+   - Especially if associated with adverse outcome (preterm delivery <34 weeks, IUGR, placental abruption, fetal death)
+   - Recurrence risk 15-65% depending on severity and gestational age at diagnosis in prior pregnancy
+   - SNOMED CT: 161765003 (History of pre-eclampsia)
+
+2. Multifetal gestation
+   - Twins, triplets, or higher-order multiples
+   - Risk approximately 2-3× singleton pregnancies
+   - SNOMED CT: 16356006 (Multiple pregnancy)
+
+3. Chronic hypertension
+   - Pre-existing or diagnosed <20 weeks
+   - 15-25% risk of superimposed preeclampsia
+   - SNOMED CT: 38341003 (Hypertensive disorder)
+
+4. Pregestational diabetes mellitus (Type 1 or Type 2)
+   - Does NOT include gestational diabetes diagnosed in current pregnancy
+   - Type 1 SNOMED CT: 46635009
+   - Type 2 SNOMED CT: 44054006
+
+5. Chronic kidney disease
+   - Baseline creatinine >1.1 mg/dL or known renal disease
+   - Includes polycystic kidney disease, glomerulonephritis, diabetic nephropathy
+   - SNOMED CT: 709044004 (Chronic kidney disease)
+
+6. Autoimmune disease
+   - Systemic lupus erythematosus (SLE): SNOMED CT 55464009
+   - Antiphospholipid syndrome (APS): SNOMED CT 69153001
+   - These conditions confer particularly high risk (20-50% preeclampsia risk)
+
+MODERATE-RISK FACTORS (≥2 required for aspirin prophylaxis):
+
+1. Nulliparity
+   - First pregnancy
+   - Risk decreases with subsequent pregnancies (unless new partner)
+
+2. Obesity
+   - Pre-pregnancy or first-trimester BMI ≥30 kg/m²
+   - Risk increases progressively: BMI 30-34.9 (RR 2.5), BMI ≥35 (RR 3.2)
+   - LOINC for BMI: 39156-5
+
+3. Family history of preeclampsia
+   - Mother or sister with history of preeclampsia
+   - Suggests genetic predisposition
+   - Approximately doubles baseline risk
+
+4. Advanced maternal age
+   - ≥35 years at delivery
+   - Risk increases with age: 35-39 (RR 1.2), ≥40 (RR 1.9)
+
+5. Prior adverse pregnancy outcome
+   - Low birth weight infant (<5th percentile)
+   - Small-for-gestational-age (SGA) infant
+   - Stillbirth or placental abruption in prior pregnancy
+   - May reflect underlying placental dysfunction
+
+6. Prolonged interpregnancy interval
+   - >10 years since last pregnancy
+   - May relate to "resetting" of maternal immune tolerance
+
+7. In vitro fertilization (IVF) conception
+   - Includes fresh or frozen embryo transfer
+   - Risk approximately 1.5-2× spontaneous conception
+
+8. Black race or socioeconomic disadvantage
+   - Black women have 60% higher risk of preeclampsia and 2-3× higher risk of eclampsia
+   - Lower income independently associated with increased risk
+   - Consider aspirin even with this single moderate risk factor alone given structural health inequities
+   - Note: Race is a social construct; disparities reflect systemic racism and healthcare access issues
+
+2.2 ASPIRIN PROPHYLAXIS PROTOCOL
+
+Evidence Base:
+The 2021 USPSTF systematic review demonstrated that low-dose aspirin in high-risk patients reduces:
+- Preeclampsia incidence by 15% (RR 0.85, 95% CI 0.78-0.92)
+- Preterm birth <37 weeks by 20% (RR 0.80, 95% CI 0.68-0.95)
+- Intrauterine growth restriction by 20% (RR 0.80, 95% CI 0.70-0.91)
+- Perinatal mortality by 21% (RR 0.79, 95% CI 0.63-0.99)
+
+No significant increase in placental abruption, postpartum hemorrhage, or neonatal bleeding complications.
+
+Aspirin Prescription Details:
+- Dose: 81 mg once daily (low-dose, "baby aspirin")
+- Timing to initiate: After 12 weeks' gestation (to avoid theoretical concern for early pregnancy complications), optimally before 16 weeks
+- Timing to discontinue: Continue until delivery (typically stopped with onset of labor or at time of scheduled cesarean)
+- Formulation: Standard enteric-coated or uncoated formulations acceptable
+- Patient counseling: Take at consistent time daily (bedtime dosing may optimize effect on nocturnal BP)
+
+RxNorm Code: 1191 (Aspirin)
+CPT Counseling Code: 99401-99404 (Preventive medicine counseling)
+
+Clinical Implementation:
+1. Complete risk assessment by end of first trimester
+2. Document risk factors in prenatal record
+3. Counsel qualifying patients on benefits and minimal risks of aspirin
+4. Prescribe or recommend over-the-counter aspirin 81 mg daily
+5. Document aspirin initiation in medication list and problem list
+6. Verify compliance at each prenatal visit
+
+Contraindications to Aspirin (rare in pregnancy):
+- Known aspirin allergy or hypersensitivity
+- Active peptic ulcer disease with recent bleeding
+- Bleeding disorder (hemophilia, severe thrombocytopenia)
+- Concurrent anticoagulation with therapeutic-dose heparin or warfarin (relative contraindication)
+
+Special Populations:
+- Patients with ≥3 moderate risk factors have risk approaching high-risk category - strong consideration for aspirin
+- Patients who decline aspirin should have shared decision-making discussion documented
+- Non-aspirin NSAIDs are NOT substitutes (contraindicated after 20 weeks due to oligohydramnios and premature ductus arteriosus closure)
+
+2.3 EMERGING SCREENING STRATEGIES
+
+First-Trimester Biomarker Screening (Not Currently Recommended for Routine Clinical Use):
+
+Serum Biomarkers:
+- Pregnancy-associated plasma protein A (PAPP-A): Low levels (<0.4 MoM) associated with increased preeclampsia risk
+- Placental growth factor (PlGF): Low first-trimester levels predictive of early-onset preeclampsia
+- LOINC for PAPP-A: 31993-3
+- LOINC for PlGF: 82985-6
+
+Ultrasound Markers:
+- Uterine artery Doppler at 11-14 weeks: Elevated pulsatility index or bilateral notching suggests abnormal placentation
+- May have role in further risk stratification
+
+Angiogenic Factor Ratio (sFlt-1/PlGF):
+- FDA-approved for short-term prediction in symptomatic patients 23-35 weeks
+- Ratio <38: Preeclampsia unlikely in next 1 week (99.3% NPV)
+- Ratio ≥38: Increased risk of preeclampsia
+- Currently used for risk stratification in hospitalized patients, not for screening
+- LOINC for sFlt-1: 49919-6
+
+ACOG Position: First-trimester screening with biomarkers or uterine artery Doppler is not recommended outside research settings for determining aspirin initiation. Clinical risk factors remain the standard approach.
+
+==============================================================================
+SECTION 3: PRENATAL MONITORING AND LABORATORY SURVEILLANCE
+==============================================================================
+
+3.1 BLOOD PRESSURE MONITORING PROTOCOLS
+
+Frequency by Clinical Status:
+
+Normal BP (No Hypertension):
+- Every prenatal visit per standard schedule (every 4 weeks until 28 weeks, every 2 weeks 28-36 weeks, weekly ≥36 weeks)
+- Home BP monitoring not routinely required
+
+Chronic Hypertension (Well-Controlled):
+- Every 1-2 weeks office visits
+- Daily home BP monitoring with log review at visits
+- Weekly laboratory monitoring (see below)
+
+Gestational Hypertension or Preeclampsia WITHOUT Severe Features:
+- Minimum weekly office visits (may increase to twice weekly based on clinical course)
+- Daily home BP monitoring with patient-reported values
+- Instruct patient to report immediately if BP ≥160/110 mmHg or symptoms develop
+- Weekly laboratory assessment
+
+Preeclampsia WITH Severe Features (Expectant Management):
+- Inpatient management at tertiary care facility with continuous monitoring
+- BP every 2-4 hours minimum (more frequent if unstable)
+- Laboratory testing at least every 12 hours
+- Continuous fetal monitoring or minimum daily NST
+
+Home Blood Pressure Monitoring Instructions:
+Patient education is critical for accurate home readings:
+1. Use validated automated BP device (provide specific recommendations; upper arm cuffs preferred over wrist)
+2. Measure at same time daily (morning before medications, evening before dinner)
+3. Proper technique: empty bladder, 10-minute seated rest, back supported, feet flat, arm supported at heart level
+4. Record all readings with date and time
+5. Report to provider immediately if: Systolic ≥160 OR diastolic ≥110, OR ≥140/90 with symptoms
+6. Bring BP log to all prenatal visits
+
+CPT Codes:
+- Home blood pressure monitoring: 93784 (ambulatory blood pressure monitoring setup)
+- 93786 (physician review and interpretation)
+
+3.2 INITIAL LABORATORY EVALUATION AT DIAGNOSIS OF HDP
+
+When hypertension is first identified or when preeclampsia is suspected, obtain comprehensive baseline laboratory panel:
+
+Complete Blood Count with Platelets:
+- Platelet count: Screen for thrombocytopenia (<100,000/μL = severe feature)
+- Hemoglobin/hematocrit: Baseline for comparison, hemoconcentration may indicate volume depletion
+- Peripheral smear if hemolysis suspected (schistocytes indicate microangiopathic hemolysis)
+- LOINC: 58410-2 (CBC panel)
+
+Comprehensive Metabolic Panel:
+- Serum creatinine: Elevated if >1.1 mg/dL or doubling of baseline (severe feature)
+- Blood urea nitrogen (BUN): Elevated in renal dysfunction
+- Electrolytes: Monitor for complications of therapy
+- Glucose: Assess metabolic status
+- LOINC: 24323-8 (Comprehensive metabolic panel)
+
+Hepatic Function Panel:
+- Aspartate aminotransferase (AST): >2× ULN is severe feature (typically ULN ~35 U/L)
+- Alanine aminotransferase (ALT): >2× ULN is severe feature
+- Both may be elevated in HELLP syndrome (often >70 U/L)
+- LOINC: AST 1920-8, ALT 1742-6
+
+Lactate Dehydrogenase (LDH):
+- Marker of hemolysis and tissue damage
+- Elevated in HELLP syndrome (≥600 IU/L diagnostic criterion)
+- LOINC: 2532-0
+
+Serum Uric Acid (Optional):
+- Historically used; elevated in preeclampsia (>5.5-6 mg/dL)
+- May help differentiate superimposed preeclampsia from chronic hypertension exacerbation
+- Not required for diagnosis or management decisions
+- LOINC: 3084-1
+
+Proteinuria Quantification:
+
+Option 1 - Spot Urine Protein/Creatinine Ratio (preferred for convenience):
+- Random urine sample, no timed collection required
+- Ratio ≥0.3 mg/mg is diagnostic for preeclampsia
+- LOINC: 34366-5 (Protein/Creatinine ratio in urine)
+- Results available within hours
+
+Option 2 - 24-Hour Urine Protein Collection:
+- Gold standard but cumbersome for patients
+- ≥300 mg in 24 hours is diagnostic
+- May be inaccurate if incomplete collection
+- LOINC: 2889-4 (Protein 24-hour urine)
+
+Option 3 - Urine Dipstick (least preferred):
+- Only if quantitative methods unavailable
+- ≥2+ suggests significant proteinuria but requires confirmation
+- High false-positive rate (concentrated urine, contamination)
+- LOINC: 5804-0 (Protein in urine by test strip)
+
+Important: Once preeclampsia is diagnosed, serial proteinuria measurements are NOT clinically useful. Increasing proteinuria does not predict outcomes or alter management. Do not repeat protein quantification once diagnosis is established.
+
+3.3 SERIAL LABORATORY MONITORING
+
+Frequency of repeat testing depends on disease severity and clinical course:
+
+Gestational Hypertension (No Severe Features):
+- Weekly: CBC with platelets, creatinine, AST/ALT, LDH
+- Weekly: Spot urine protein/creatinine ratio (to monitor for progression to preeclampsia)
+- Can perform as outpatient
+
+Preeclampsia Without Severe Features:
+- Weekly: CBC with platelets, creatinine, AST/ALT
+- Do NOT repeat proteinuria (no clinical value once diagnosis made)
+- Outpatient monitoring acceptable if stable
+
+Preeclampsia With Severe Features (Expectant Management):
+- Every 12 hours minimum: CBC with platelets, creatinine, AST/ALT, LDH
+- Daily: Visual symptoms and urine output monitoring
+- Requires inpatient hospitalization at tertiary center
+
+Rationale: Serial labs detect development of severe features (declining platelets, worsening hepatic or renal function) which may prompt delivery or intensification of management.
+
+Laboratory-Based Indications for Delivery (Regardless of Gestational Age):
+- Platelet count <100,000/μL with downward trend
+- Progressive thrombocytopenia (e.g., drop from 150,000 to 100,000 within 24-48 hours)
+- AST or ALT >2× baseline or absolute values suggesting liver dysfunction
+- Creatinine >1.1 mg/dL or doubling of baseline
+- LDH ≥600 IU/L (HELLP syndrome)
+- Development of disseminated intravascular coagulation (DIC)
+
+3.4 FETAL SURVEILLANCE PROTOCOLS
+
+The goal of fetal testing is to identify placental insufficiency and impending fetal compromise in the setting of HDP.
+
+Testing Modalities and Frequency:
+
+Gestational Hypertension or Preeclampsia WITHOUT Severe Features:
+- Non-stress test (NST): 1-2 times per week starting at diagnosis
+- Amniotic fluid volume assessment: Weekly (by ultrasound, amniotic fluid index or maximum vertical pocket)
+- Fetal growth ultrasound: Every 3-4 weeks
+- Umbilical artery Doppler: Not routinely required unless growth restriction suspected
+
+Preeclampsia WITH Severe Features (Expectant Management <34 weeks):
+- NST: At least daily (many centers perform continuous monitoring)
+- Biophysical profile (BPP): Twice weekly
+- Amniotic fluid volume: Twice weekly minimum
+- Fetal growth ultrasound: Every 2-3 weeks
+- Umbilical artery Doppler: At least weekly (critical for early-onset preeclampsia and suspected FGR)
+
+CPT Codes for Fetal Testing:
+- Fetal non-stress test: 59025
+- Biophysical profile without NST: 76815
+- Biophysical profile with NST: 76818
+- Umbilical artery Doppler velocimetry: 76820
+- Limited obstetric ultrasound: 76815
+- Complete obstetric ultrasound: 76805 (first fetus), 76810 (each additional)
+
+Umbilical Artery Doppler Interpretation:
+- Normal: Forward flow throughout cardiac cycle
+- Elevated resistance: Increased systolic/diastolic ratio or pulsatility index
+- Absent end-diastolic flow: Severe placental insufficiency, consider delivery if ≥34 weeks
+- Reversed end-diastolic flow: Critical finding, strong consideration for delivery regardless of gestational age
+
+Indications for Delivery Based on Fetal Testing:
+- Non-reassuring fetal heart rate pattern (recurrent late decelerations, absent variability, prolonged deceleration)
+- Biophysical profile score ≤4
+- Absent or reversed end-diastolic flow on umbilical artery Doppler (especially if ≥34 weeks)
+- Severe oligohydramnios (maximum vertical pocket <2 cm, AFI <5 cm)
+- Estimated fetal weight <5th percentile with abnormal Doppler
+- Intrauterine fetal demise
+
+==============================================================================
+SECTION 4: ANTIHYPERTENSIVE THERAPY
+==============================================================================
+
+4.1 CRITICAL TREATMENT THRESHOLDS AND PRINCIPLES
+
+Fundamental Principle: The approach to antihypertensive therapy differs significantly based on the type of hypertensive disorder and the blood pressure range.
+
+DO NOT TREAT MILD-RANGE BP (140-159/90-109 mmHg) IN:
+- Gestational hypertension without severe features
+- Preeclampsia without severe features
+
+Rationale: Treatment of mild-range BP may mask disease progression (patient may feel reassured despite worsening end-organ dysfunction). Lowering BP does not treat the underlying preeclampsia pathophysiology. The CHIPS trial demonstrated no benefit to tight BP control in improving maternal or perinatal outcomes in this population.
+
+DO TREAT CHRONIC HYPERTENSION AT LOWER THRESHOLD (≥140/90 mmHg):
+- Based on 2022 CHAP trial findings
+- Treatment initiated at BP ≥140/90 mmHg reduces serious maternal complications without increasing SGA risk
+- Target BP: <140/90 mmHg (range 120-139/80-89 mmHg acceptable)
+
+ALWAYS TREAT SEVERE-RANGE BP (≥160/110 mmHg) IMMEDIATELY:
+- In ANY pregnancy, regardless of underlying diagnosis
+- Goal: Initiate treatment within 30-60 minutes of confirmed severe-range BP
+- Rationale: Prevent maternal stroke, hypertensive encephalopathy, other end-organ damage
+- Target BP: NOT normotension, but 140-150/90-100 mmHg range
+- Never delay treatment to "observe" or "confirm" if BP persistently ≥160/110
+
+4.2 ORAL ANTIHYPERTENSIVE THERAPY FOR CHRONIC HYPERTENSION AND MAINTENANCE THERAPY
+
+First-Line Agents:
+
+LABETALOL (Beta-blocker with alpha-blocking activity)
+- Starting dose: 100-200 mg orally twice daily
+- Titration: Increase by 100-200 mg per dose every 2-3 days as needed
+- Maximum dose: 800 mg three times daily (2,400 mg/day total)
+- Target BP: <140/90 mmHg (chronic HTN) or maintain <160/110 mmHg (preeclampsia with severe features on expectant management)
+
+Mechanism: Non-selective beta-blocker with selective alpha-1 blockade, reduces systemic vascular resistance
+
+Contraindications:
+- Asthma or reactive airway disease (may cause bronchospasm)
+- Heart block (second or third degree)
+- Bradycardia (baseline heart rate <60 bpm)
+- Decompensated heart failure
+
+Side Effects: Fatigue, dizziness, bradycardia, bronchospasm (rare), headache
+
+Monitoring: Heart rate (hold if <60 bpm), BP response, symptoms
+
+RxNorm Code: 6185 (Labetalol)
+Pregnancy Category: FDA removed letter categories; no known teratogenic effects
+
+NIFEDIPINE EXTENDED-RELEASE (Calcium channel blocker)
+- Starting dose: 30 mg orally once daily (extended-release formulation)
+- Titration: Increase to 60 mg daily after 3-7 days if needed, maximum 120 mg/day
+- Formulation: MUST use extended-release (XL, ER) formulation for chronic therapy
+- Target BP: <140/90 mmHg (chronic HTN)
+
+Mechanism: Blocks L-type calcium channels in vascular smooth muscle, causing vasodilation
+
+Contraindications:
+- Significant cardiovascular disease (severe aortic stenosis, unstable angina)
+- Concurrent use with magnesium sulfate may cause profound hypotension (relative contraindication - use with caution and monitoring)
+
+Side Effects: Peripheral edema (very common in pregnancy regardless), headache, flushing, reflex tachycardia, constipation
+
+Monitoring: BP response, heart rate, edema (may worsen physiologic pregnancy edema)
+
+Clinical Pearl: Lower rate of hospital readmission for postpartum hypertension compared to labetalol in some studies. Often preferred in patients with asthma.
+
+RxNorm Code: 7417 (Nifedipine)
+
+METHYLDOPA (Centrally-acting alpha-2 agonist)
+- Starting dose: 250 mg orally 2-3 times daily
+- Maximum dose: 500 mg three times daily (3,000 mg/day, though doses >2,000 mg rarely provide additional benefit)
+- Onset of action: 3-6 hours; full effect may take 2-3 days
+
+Mechanism: Converted to alpha-methylnorepinephrine in CNS, stimulates alpha-2 receptors, reduces sympathetic outflow
+
+Advantages: Longest safety record in pregnancy (used since 1960s), extensive reassuring fetal outcome data
+
+Disadvantages:
+- Less effective than labetalol or nifedipine for BP control
+- Sedating (limits daytime functioning)
+- Associated with postpartum depression
+- Positive direct Coombs test in 20% (usually not clinically significant)
+
+Side Effects: Sedation, fatigue, dry mouth, depression, hepatotoxicity (rare), hemolytic anemia (rare)
+
+RxNorm Code: 6876 (Methyldopa)
+
+Use: Now considered second-line due to side effect profile, but remains option for patients with contraindications to other agents
+
+MEDICATIONS TO AVOID IN PREGNANCY:
+
+ACE Inhibitors (Enalapril, Lisinopril, etc.):
+- CONTRAINDICATED in second and third trimesters
+- Cause fetal renal dysgenesis, oligohydramnios, IUGR, neonatal renal failure, death
+- First-trimester exposure: Unclear risk, avoid if possible
+- If patient on ACE inhibitor pre-pregnancy, switch at first prenatal visit
+
+Angiotensin Receptor Blockers (ARBs - Losartan, Valsartan, etc.):
+- CONTRAINDICATED in pregnancy (same fetal risks as ACE inhibitors)
+
+Atenolol:
+- Associated with fetal growth restriction
+- Avoid; use labetalol instead if beta-blocker needed
+
+Diuretics:
+- Generally avoided for new initiation in pregnancy (reduce plasma volume, may worsen placental perfusion)
+- May continue if patient well-controlled on diuretic pre-pregnancy
+- Thiazides: Risk of neonatal thrombocytopenia, hypoglycemia
+- Spironolactone: Anti-androgenic effects, avoid
+
+4.3 ACUTE MANAGEMENT OF SEVERE-RANGE HYPERTENSION
+
+URGENT TREATMENT PROTOCOL:
+
+Confirmed severe-range BP (≥160/110 mmHg) sustained for 15 minutes requires immediate treatment regardless of symptoms or setting. This is a medical emergency.
+
+Setting: Can occur in outpatient clinic, emergency department, or inpatient L&D unit. DO NOT transfer patient before initiating treatment if BP is severely elevated.
+
+Initial Assessment and Preparation:
+1. Confirm BP reading with proper technique, repeat after 15 minutes if first reading ≥160/110
+2. Ensure IV access (place if not present, but do not delay oral therapy)
+3. Continuous maternal BP and pulse monitoring
+4. Continuous or intermittent fetal heart rate monitoring if ≥24 weeks
+5. Call for assistance (attending physician, anesthesia if inpatient)
+6. Review medication allergies and contraindications
+
+GOAL OF ACUTE TREATMENT:
+- Lower BP to SAFE range (140-150 systolic, 90-100 diastolic), NOT to normal levels
+- Avoid precipitous drop which may compromise uteroplacental perfusion and cause fetal distress
+- Avoid lowering diastolic <90 mmHg acutely
+
+THREE FIRST-LINE MEDICATION OPTIONS:
+
+OPTION 1: IV LABETALOL ESCALATION PROTOCOL
+
+Dosing Schedule:
+1. 20 mg IV push over 2 minutes → reassess BP in 10 minutes
+2. If still ≥160/110: Give 40 mg IV → reassess in 10 minutes
+3. If still ≥160/110: Give 80 mg IV → reassess in 10 minutes
+4. If still ≥160/110: Give 80 mg IV → reassess in 10 minutes
+5. If still ≥160/110: Switch to hydralazine 10 mg IV OR call for emergency consultation (consider ICU transfer, other agents)
+
+Maximum cumulative dose: 300 mg total for acute episode
+
+Onset: 5-10 minutes
+Duration: 3-6 hours
+
+Contraindications: Asthma, heart block, severe bradycardia (<60 bpm), decompensated heart failure
+
+Monitoring:
+- BP every 10 minutes during escalation
+- Heart rate continuously (hold if <60 bpm)
+- Fetal heart rate monitoring
+
+Side effects: Maternal or fetal bradycardia, bronchospasm (rare), nausea, dizziness
+
+RxNorm Code: 6185 (Labetalol)
+
+OPTION 2: IV HYDRALAZINE ESCALATION PROTOCOL
+
+Dosing Schedule:
+1. 5-10 mg IV push over 2 minutes (10 mg preferred) → reassess BP in 20 minutes
+2. If still ≥160/110: Give 10 mg IV → reassess in 20 minutes
+3. If still ≥160/110: Give 10 mg IV → reassess in 20 minutes
+4. If still ≥160/110: Switch to labetalol 40 mg IV, then 80 mg IV if needed, then call for emergency consultation
+
+Onset: 10-20 minutes (slower than labetalol)
+Duration: 4-6 hours
+
+Mechanism: Direct arterial vasodilator
+
+Advantages: Can use in patients with asthma
+
+Disadvantages:
+- Less predictable BP response (can cause precipitous drop)
+- Reflex tachycardia (fetal and maternal)
+- Headache may confound neurologic assessment in preeclampsia
+
+Contraindications: Maternal tachycardia, coronary artery disease
+
+Monitoring:
+- BP every 10-20 minutes (per protocol)
+- Maternal heart rate (expected to increase)
+- Fetal heart rate (may see baseline increase)
+
+Side effects: Headache (very common), flushing, maternal and fetal tachycardia, palpitations, hypotension (if excessive dose)
+
+RxNorm Code: 5470 (Hydralazine)
+
+OPTION 3: ORAL NIFEDIPINE IMMEDIATE-RELEASE PROTOCOL
+
+Dosing Schedule:
+1. 10 mg PO immediate-release capsule (SWALLOW, not sublingual) → reassess BP in 20 minutes
+2. If still ≥160/110: Give 20 mg PO → reassess in 20 minutes
+3. If still ≥160/110: Give 20 mg PO → reassess in 20 minutes
+4. If still ≥160/110: Consider labetalol 40 mg IV and call for emergency consultation
+
+Maximum: 180 mg/day total (including all doses for acute management)
+
+Onset: 10-20 minutes when swallowed
+Peak effect: 30-60 minutes
+Duration: 4-6 hours
+
+CRITICAL: Never use sublingual nifedipine (risk of severe hypotension and stroke). Patient must swallow capsule.
+
+Advantages:
+- Oral route (no IV access required)
+- Can be given in office/clinic setting
+- Safe in asthma
+
+Contraindications:
+- Concurrent magnesium sulfate (relative - may cause severe hypotension; if both needed, use with very close monitoring)
+
+Monitoring:
+- BP every 20 minutes during protocol
+- Avoid if patient on magnesium sulfate or use with extreme caution
+
+Side effects: Headache, flushing, reflex tachycardia, peripheral edema
+
+RxNorm Code: 7417 (Nifedipine)
+
+POST-ACUTE MANAGEMENT MONITORING SCHEDULE:
+
+After achieving target BP (140-150/90-100 mmHg):
+- Hours 0-1: BP every 10 minutes
+- Hours 1-2: BP every 15 minutes
+- Hours 2-3: BP every 30 minutes
+- Hours 3-8: BP every 1 hour
+- After 8 hours: BP every 4 hours if stable (or per unit protocol)
+
+Transition to Oral Maintenance Therapy:
+Once acute episode controlled, start or adjust oral antihypertensive regimen:
+- Labetalol: Start 200 mg PO BID or TID
+- Nifedipine XL: Start 30-60 mg PO daily
+- Goal: Prevent recurrent severe-range BP episodes
+
+If Severe Hypertension is Refractory:
+Defined as persistent BP ≥160/110 despite maximal doses of two first-line agents:
+- Consult maternal-fetal medicine and/or critical care
+- Consider second-line agents: IV nicardipine infusion, sodium nitroprusside (limit <4 hours due to cyanide toxicity), labetalol infusion, esmolol
+- Assess for secondary causes or complications (pheochromocytoma, aortic dissection, intracranial hemorrhage)
+- Prepare for urgent delivery regardless of gestational age
+
+==============================================================================
+SECTION 5: MAGNESIUM SULFATE FOR SEIZURE PROPHYLAXIS
+==============================================================================
+
+5.1 INDICATIONS FOR MAGNESIUM SULFATE
+
+Magnesium sulfate is the medication of choice for preventing eclamptic seizures and treating active eclampsia. It is NOT an antihypertensive agent.
+
+MANDATORY Indications:
+- Preeclampsia with severe features (antepartum, intrapartum, postpartum)
+- Eclampsia (active seizures)
+- HELLP syndrome
+
+OPTIONAL Indications (Clinical Judgment):
+- Preeclampsia without severe features if delivery is imminent
+- Imminent eclampsia symptoms even if BP not yet in severe range (severe headache, visual changes, hyperreflexia with clonus)
+
+NOT Indicated:
+- Gestational hypertension alone
+- Chronic hypertension alone
+- Mild preeclampsia remote from delivery undergoing expectant outpatient management
+
+Evidence: Magnesium sulfate reduces eclampsia risk by 50% compared to placebo in severe preeclampsia (Magpie Trial). Number needed to treat ~100 for mild preeclampsia, ~71 for severe preeclampsia.
+
+5.2 MAGNESIUM SULFATE ADMINISTRATION PROTOCOL
+
+Standard Dosing Regimen:
+
+LOADING DOSE:
+- 4-6 g IV over 15-20 minutes
+- Higher loading dose (6 g) recommended for patients with BMI ≥35 kg/m²
+- Dilution: Usually 4-6 g in 100 mL normal saline, infused via IV pump
+- Give in antepartum period when severe features identified, at admission for delivery, or immediately postpartum if severe features develop
+
+MAINTENANCE INFUSION:
+- 1-2 g per hour continuous IV infusion
+- Most centers use 2 g/hour as standard
+- Lower rate (1 g/hour) may be used in renal insufficiency or small body size
+- Continue infusion through labor and delivery (do NOT discontinue for cesarean section)
+
+DURATION:
+- Continue for 24 hours postpartum
+- If eclamptic seizure occurred: Continue 24 hours after last seizure
+- If patient remains symptomatic (persistent headache, visual changes) after 24 hours: May extend to 48 hours based on clinical judgment
+
+Therapeutic Serum Level: 4.8-8.4 mg/dL (4-7 mEq/L)
+Note: Routine magnesium levels not required if clinical monitoring is appropriate and renal function normal
+
+RxNorm Code: 6585 (Magnesium sulfate)
+CPT Code: 96365 (IV infusion, first hour), 96366 (each additional hour)
+
+5.3 MONITORING DURING MAGNESIUM THERAPY
+
+Clinical Monitoring (Before Each Dose and Every 2-4 Hours During Infusion):
+
+1. Deep Tendon Reflexes (Patellar Reflex):
+   - MUST be present before each bolus and during maintenance
+   - Loss of reflexes is first warning sign of magnesium toxicity
+   - If reflexes absent: HOLD magnesium, check magnesium level, assess for other toxicity signs
+
+2. Respiratory Rate:
+   - MUST be ≥12 breaths per minute
+   - Respiratory depression occurs at toxic levels
+   - If RR <12: HOLD magnesium immediately, check level, prepare calcium gluconate
+
+3. Urine Output:
+   - MUST be ≥30 mL per hour (≥100-120 mL per 4 hours)
+   - Magnesium is renally excreted; oliguria leads to accumulation
+   - If oliguria: HOLD magnesium, place Foley catheter for accurate measurement, check renal function
+
+4. Oxygen Saturation:
+   - Maintain SpO2 >95%
+   - Supplemental oxygen if needed
+
+Document Monitoring:
+Use standardized flowsheet documenting reflexes, RR, urine output, and vital signs every 2-4 hours during infusion
+
+5.4 MAGNESIUM TOXICITY: RECOGNITION AND MANAGEMENT
+
+Progressive Toxicity by Serum Level:
+
+Therapeutic Range: 4.8-8.4 mg/dL
+- Desired effect, minimal side effects
+- Mild flushing, warmth, sedation are common and expected
+
+9-12 mg/dL: FIRST WARNING SIGNS
+- Loss of patellar (deep tendon) reflexes - EARLIEST clinical sign
+- Feeling of weakness, lethargy
+- Action: HOLD magnesium infusion, check serum magnesium level
+
+12-15 mg/dL: RESPIRATORY DEPRESSION
+- Respiratory rate decreases, shallow breathing
+- Somnolence, slurred speech
+- Action: STOP magnesium, give calcium gluconate antidote, respiratory support
+
+15-17 mg/dL: MUSCLE PARALYSIS
+- Profound muscle weakness
+- Respiratory failure requiring intubation
+
+>18-24 mg/dL: CARDIAC TOXICITY
+- Heart block, bradycardia
+- Cardiac arrest, asystole
+
+>30 mg/dL: Often fatal without aggressive intervention
+
+ANTIDOTE: CALCIUM GLUCONATE
+
+Indication: Any sign of magnesium toxicity (absent reflexes, respiratory depression, cardiac conduction abnormalities)
+
+Dose: 1 gram (10 mL of 10% solution) IV push over 3 minutes
+
+Mechanism: Calcium directly antagonizes magnesium at neuromuscular junction and cardiac tissue
+
+Onset: Immediate (within 1-2 minutes)
+
+Action after Administration:
+1. Give calcium gluconate 1 g IV
+2. STOP magnesium sulfate infusion
+3. Check stat serum magnesium level
+4. Provide respiratory support (bag-mask ventilation or intubation if needed)
+5. Monitor closely; effects of calcium are transient (may need repeat dose)
+6. Once magnesium level decreases and clinical status improves, may cautiously restart at lower rate if still indicated
+
+Preparation: Every unit administering magnesium should have calcium gluconate immediately available at bedside
+
+RxNorm Code: 1908 (Calcium gluconate)
+
+Special Populations Requiring Dose Adjustment:
+
+Renal Insufficiency:
+- Creatinine >1.2 mg/dL: Use loading dose, then reduce maintenance to 0.5-1 g/hour
+- Check serum magnesium levels every 4-6 hours
+- Monitor for toxicity more frequently
+
+Contraindications to Magnesium Sulfate:
+- Myasthenia gravis (may precipitate myasthenic crisis)
+- Heart block or severe bradycardia
+- Severe renal failure (relative contraindication; use with dose reduction and frequent levels)
+
+Drug Interactions:
+- Concurrent nifedipine: May potentiate hypotension and neuromuscular blockade (use cautiously with close monitoring; not absolute contraindication)
+- Neuromuscular blocking agents: Magnesium potentiates effect; reduce dose of paralytic if intubation needed
+
+5.5 ECLAMPTIC SEIZURE MANAGEMENT
+
+If generalized tonic-clonic seizure occurs:
+
+IMMEDIATE ACTIONS (First 60 seconds):
+1. Call for help / activate emergency response
+2. Position patient in left lateral decubitus (recovery position) to prevent aspiration
+3. Protect from injury (pad side rails, remove objects, do NOT restrain)
+4. Suction airway as needed, apply oxygen by face mask (10-15 L/min)
+5. Note time of seizure onset and duration
+
+DO NOT:
+- Insert anything in mouth during active seizure
+- Give IV boluses or medications during active tonic-clonic activity (wait until seizure subsides)
+
+AFTER SEIZURE CONCLUDES (typically self-limited to 60-90 seconds):
+
+If Patient NOT Already on Magnesium:
+- Give magnesium sulfate 6 g IV over 15-20 minutes (loading dose)
+- Start maintenance infusion 2 g/hour
+
+If Patient ALREADY on Magnesium:
+- Give additional 2 g IV bolus over 5 minutes
+- Continue maintenance infusion (or increase from 1 to 2 g/hour)
+- Check magnesium level (may be subtherapeutic)
+
+ADDITIONAL MANAGEMENT:
+- Stabilize airway, breathing, circulation (ABCs)
+- Obtain IV access if not present (×2 large-bore IVs)
+- Treat severe hypertension (if present, typically is)
+- Continuous pulse oximetry and fetal monitoring
+- Plan for delivery (after maternal stabilization)
+- Consider imaging (CT or MRI head) if atypical features, focal neurologic deficits, or prolonged altered mental status
+
+RECURRENT SEIZURES:
+If seizure recurs despite magnesium:
+- Give additional magnesium 2 g IV bolus
+- Consider second-line anticonvulsants: Lorazepam 2-4 mg IV, phenytoin 15-20 mg/kg IV, levetiracetam
+- Neurology consultation
+- ICU-level care
+
+DELIVERY TIMING AFTER ECLAMPSIA:
+Eclampsia is an indication for delivery regardless of gestational age once maternal condition is stabilized (typically within 12-24 hours). Immediate delivery during active seizing or in unstable patient increases both maternal and fetal risk.
+
+==============================================================================
+SECTION 6: DELIVERY TIMING AND INTRAPARTUM MANAGEMENT
+==============================================================================
+
+6.1 DELIVERY TIMING BY DIAGNOSIS AND GESTATIONAL AGE
+
+Delivery is the definitive treatment for preeclampsia. Timing is based on gestational age, disease severity, and maternal/fetal status.
+
+GESTATIONAL HYPERTENSION WITHOUT SEVERE FEATURES:
+Recommended Delivery: 37 0/7 weeks' gestation
+- Reassess for severe features or preeclampsia weekly
+- Expectant management with twice-weekly fetal testing until 37 weeks
+- Deliver at 37 weeks even if stable (increased stillbirth risk beyond this point)
+
+PREECLAMPSIA WITHOUT SEVERE FEATURES:
+Recommended Delivery: 37 0/7 weeks' gestation
+- Evidence: HYPITAT trial showed induction at 37 weeks reduces maternal morbidity without increasing cesarean rate
+- Weekly monitoring (labs, BP, fetal testing) until delivery
+- Deliver immediately if severe features develop or fetal compromise occurs
+
+PREECLAMPSIA WITH SEVERE FEATURES ≥34 0/7 WEEKS:
+Recommended Delivery: After maternal stabilization, typically within 24-48 hours
+- Stabilize severe hypertension (achieve BP <160/110 mmHg)
+- Initiate magnesium sulfate for seizure prophylaxis
+- Administer corticosteroids if 34 0/7 to 36 6/7 weeks (for fetal lung maturity)
+- Proceed with delivery (induction or cesarean based on obstetric indications)
+
+Rationale: At ≥34 weeks, neonatal outcomes are excellent, and maternal risks of expectant management outweigh fetal benefits of prolongation
+
+PREECLAMPSIA WITH SEVERE FEATURES <34 0/7 WEEKS:
+Delivery vs. Expectant Management: Individualized, requires tertiary care center
+
+IMMEDIATE Delivery Indications (Regardless of Gestational Age):
+Maternal indications:
+- Uncontrollable severe-range hypertension (≥160/110 despite maximal therapy)
+- Eclampsia (after stabilization)
+- Pulmonary edema
+- Placental abruption
+- Disseminated intravascular coagulation (DIC)
+- Stroke, hypertensive encephalopathy, cerebral hemorrhage
+- Myocardial infarction or cardiac failure
+- Acute renal failure or acute kidney injury
+- Hepatic hematoma, infarction, or rupture
+- Persistent severe symptoms (headache, visual changes, RUQ pain) despite maximal medical therapy
+
+Fetal indications:
+- Non-reassuring fetal status (category II with severe variables, category III tracing)
+- Severe fetal growth restriction (<5th percentile with abnormal Dopplers)
+- Reversed end-diastolic flow on umbilical artery Doppler (especially if ≥32 weeks)
+- Intrauterine fetal demise
+
+Expectant Management Criteria (If No Immediate Delivery Indications):
+Requirements for expectant management <34 weeks:
+1. Tertiary care facility with:
+   - 24-hour maternal-fetal medicine coverage
+   - Level III or IV neonatal intensive care unit
+   - Anesthesia availability
+   - Operating room immediately available
+2. Maternal stability:
+   - BP controlled to <160/110 mmHg with medication
+   - No persistent severe symptoms
+   - No declining platelet count or worsening hepatic/renal function
+3. Fetal well-being:
+   - Reassuring fetal testing (NST, BPP)
+   - No severe growth restriction with abnormal Dopplers
+   - Adequate amniotic fluid
+4. Corticosteroid administration:
+   - Betamethasone 12 mg IM × 2 doses, 24 hours apart (RxNorm: 1346)
+   - Maximum benefit at 24 hours after completion
+   - DO NOT delay delivery for steroid completion if unstable
+5. Inpatient hospitalization with continuous monitoring
+
+Expected Duration of Expectant Management:
+- Average prolongation: 1-2 weeks (rarely >2 weeks)
+- Goal: Reach 34 weeks if possible
+- Daily or twice-daily assessment required
+
+Monitoring During Expectant Management <34 Weeks:
+- Maternal vitals every 4 hours
+- Continuous or daily NST
+- Labs (CBC, creatinine, AST/ALT, LDH) every 12-24 hours
+- Strict intake/output monitoring
+- Daily symptom assessment (headache, visual changes, RUQ pain, contractions)
+- Ultrasound for fetal growth every 2-3 weeks, umbilical artery Doppler weekly
+
+HELLP SYNDROME:
+Recommended Delivery: After stabilization, typically within 24 hours regardless of gestational age
+- Very high maternal morbidity (placental abruption, DIC, hepatic rupture, acute renal failure, pulmonary edema)
+- If <34 weeks and stable after steroids, some centers may attempt expectant management for 24-48 hours, but most proceed with delivery
+
+ECLAMPSIA:
+Recommended Delivery: After maternal stabilization (usually 12-24 hours)
+- Stabilize with magnesium sulfate
+- Control severe hypertension
+- Supportive care, imaging if indicated
+- Proceed with delivery once maternal status permits safe anesthesia/surgery
+
+6.2 MODE OF DELIVERY
+
+Preeclampsia and hypertensive disorders are NOT automatic indications for cesarean delivery. Mode of delivery should be based on standard obstetric indications (fetal presentation, prior uterine surgery, gestational age, fetal status, etc.).
+
+VAGINAL DELIVERY:
+Preferred when feasible
+- Labor induction success rates similar to normotensive patients
+- Regional anesthesia (epidural) preferred for labor analgesia
+- May help BP control through sympathetic blockade
+- Continuous fetal monitoring required
+- Magnesium sulfate should NOT be discontinued for labor
+
+Cervical Ripening/Induction:
+- May use mechanical methods (Foley catheter) or pharmacologic agents (misoprostol, dinoprostone)
+- Oxytocin augmentation as needed
+- No specific contraindications related to HDP
+
+CESAREAN DELIVERY:
+Standard obstetric indications:
+- Non-reassuring fetal status
+- Failed induction
+- Malpresentation (breech, transverse)
+- Prior classical cesarean or uterine surgery
+- Maternal instability precluding prolonged labor
+
+Anesthetic Considerations:
+- Regional anesthesia (spinal or epidural) PREFERRED over general anesthesia
+- Lower risk of failed intubation, aspiration, exaggerated BP response to intubation
+- Platelet count threshold for neuraxial anesthesia: ≥70,000/μL (if platelet count stable and no coagulopathy)
+- If platelets <70,000: May consider if count stable, no clinical bleeding, anesthesiologist comfortable; otherwise general anesthesia
+- Avoid general anesthesia if possible (hypertensive response to laryngoscopy/intubation)
+
+Transfusion Thresholds:
+Consider blood product availability:
+- Packed red blood cells if hemoglobin <7 g/dL or active bleeding
+- Platelets if <20,000/μL (prophylactic) or <50,000/μL with active bleeding or planned surgery
+- Fresh frozen plasma if coagulopathy (INR >1.5-2.0) and bleeding
+
+6.3 INTRAPARTUM BLOOD PRESSURE AND MEDICATION MANAGEMENT
+
+During Labor and Delivery:
+- Monitor BP every 15-30 minutes during active labor (more frequent if on medication for severe HTN)
+- Continuous fetal heart rate monitoring
+- Continue magnesium sulfate infusion throughout (do NOT stop for cesarean)
+- Treat severe-range BP (≥160/110) immediately per acute protocols
+- Continue home antihypertensive medications
+
+Second Stage Management:
+- Shorten second stage if maternal exhaustion or uncontrolled BP
+- Operative vaginal delivery (forceps, vacuum) to abbreviate pushing
+- Avoid prolonged Valsalva (may exacerbate BP elevation)
+
+Third Stage Management:
+- Oxytocin for prevention of postpartum hemorrhage (standard dose)
+- AVOID methylergonovine (Methergine) and ergonovine in HDP - causes severe vasoconstriction and BP elevation
+- Use oxytocin, misoprostol, or carboprost for hemorrhage management
+- Be prepared for increased PPH risk in setting of thrombocytopenia, abruption, or DIC
+
+6.4 IMMEDIATE POSTPARTUM MANAGEMENT (0-24 Hours)
+
+Continue Magnesium Sulfate:
+- For 24 hours postpartum if given for severe features or eclampsia
+- May extend to 48 hours if persistent symptoms or eclampsia occurred
+
+Blood Pressure Monitoring:
+- Every 2-4 hours for first 24 hours (while on magnesium)
+- Frequent monitoring even if BP was controlled antepartum - postpartum is high-risk period for severe hypertension
+
+Common Postpartum BP Pattern:
+- BP often INCREASES in first 3-6 days postpartum (peak at days 3-6)
+- Due to fluid mobilization from extravascular space
+- Many patients require new or increased antihypertensives postpartum even if BP controlled during pregnancy
+
+Fluid Management:
+- Careful attention to fluid balance (avoid fluid overload → pulmonary edema risk)
+- Restrict IV fluids to 80-100 mL/hour unless replacing losses
+- Diuresis typically begins 24-48 hours postpartum
+- Monitor intake/output, especially if oliguria or pulmonary edema concern
+
+Laboratory Monitoring:
+- Daily CBC with platelets until trending upward
+- Daily comprehensive metabolic panel until improving
+- Platelet count nadirs at 24-48 hours postpartum in HELLP syndrome, then recovers
+
+De Novo Postpartum Preeclampsia:
+- Can occur in patients with NO antepartum hypertension
+- Peak incidence 3-7 days postpartum
+- Symptoms: Severe headache, visual changes, RUQ pain, BP ≥160/110
+- Requires same evaluation and treatment as antepartum preeclampsia
+- Should prompt ED evaluation if after hospital discharge
+
+==============================================================================
+SECTION 7: POSTPARTUM CARE AND LONG-TERM FOLLOW-UP
+==============================================================================
+
+7.1 POSTPARTUM BLOOD PRESSURE MONITORING SCHEDULE
+
+First 24-48 Hours (Inpatient):
+- BP every 2-4 hours while on magnesium sulfate
+- Continue inpatient monitoring for minimum 24-48 hours
+- Extend hospitalization if severe features persist or BP uncontrolled
+
+48-72 Hours Post-Discharge:
+- BP check REQUIRED within 72 hours of discharge for ALL women with HDP
+- Can be performed at:
+  - Hospital or clinic visit
+  - Home health nurse visit
+  - Obstetric triage unit
+- Earlier if symptoms (headache, visual changes, RUQ pain, shortness of breath, BP >160/110 at home)
+
+Days 3-7 Postpartum:
+- Daily home BP monitoring
+- Patient should report BP ≥150/100 to provider
+- BP often PEAKS at 3-6 days postpartum (critical window)
+- Many patients develop severe hypertension for first time during this period
+
+Days 7-10:
+- In-person BP check for all women with HDP
+- Assess symptoms
+- Adjust medications
+
+Week 6 (Routine Postpartum Visit):
+- Comprehensive postpartum visit
+- BP check, symptom review
+- Discuss long-term cardiovascular risk
+- Plan for future pregnancies
+- Transition care to primary care provider
+
+Beyond 6 Weeks:
+- If BP remains elevated >12 weeks postpartum: Reclassify as chronic hypertension
+- Refer to primary care or cardiology for ongoing management
+
+7.2 POSTPARTUM ANTIHYPERTENSIVE THERAPY
+
+Principles:
+- Many antihypertensives safe for breastfeeding
+- BP often HIGHER postpartum than antepartum (paradoxical)
+- Low threshold to initiate or increase medications
+
+Preferred Agents (Safe for Breastfeeding):
+
+NIFEDIPINE EXTENDED-RELEASE (First-line postpartum)
+- Dose: 30-90 mg once daily (can use up to 120 mg)
+- Minimal transfer to breast milk
+- Studies show lower hospital readmission rates compared to labetalol
+- RxNorm: 7417
+
+LABETALOL
+- Dose: 100-400 mg twice to three times daily (maximum 2,400 mg/day)
+- Safe during breastfeeding
+- May cause fatigue (limiting for new mothers)
+- RxNorm: 6185
+
+ENALAPRIL (ACE Inhibitor - NOW SAFE Postpartum)
+- Dose: 5-20 mg twice daily (maximum 40 mg/day)
+- SAFE for breastfeeding (unlike in pregnancy)
+- May aid cardiac remodeling after preeclampsia
+- Preferred if patient had severe features (may reduce long-term cardiac dysfunction)
+- RxNorm: 3827
+
+CAPTOPRIL (ACE Inhibitor)
+- Dose: 12.5-50 mg three times daily
+- Alternative ACE inhibitor for breastfeeding
+- Shorter half-life than enalapril
+
+AMLODIPINE (Calcium Channel Blocker)
+- Dose: 2.5-10 mg once daily
+- Alternative to nifedipine
+- Once-daily dosing
+
+Medications to AVOID Postpartum:
+
+ATENOLOL:
+- High concentration in breast milk
+- Prefer labetalol if beta-blocker needed
+
+METHYLDOPA:
+- Risk of postpartum depression
+- Sedating for new mothers
+- Avoid if possible
+
+HIGH-DOSE DIURETICS:
+- May decrease milk production
+- Use low-dose if needed for volume overload
+
+Treatment Targets:
+- Systolic BP <140 mmHg, Diastolic BP <90 mmHg
+- Initiate treatment if BP ≥150/100 mmHg on two occasions OR ≥160/110 once
+- Adjust every 1-3 days as needed for BP control
+
+Medication Discontinuation:
+- If BP controlled and patient normotensive off medications, may trial discontinuation at 6-12 weeks postpartum
+- Taper gradually (especially beta-blockers)
+- If BP remains elevated >12 weeks postpartum: Chronic hypertension, requires ongoing treatment
+
+7.3 WARNING SIGNS REQUIRING EMERGENCY EVALUATION
+
+Patient Education: All postpartum patients with HDP should be counseled on warning signs and when to seek immediate care (ED or obstetric triage).
+
+SEEK IMMEDIATE CARE FOR:
+- Severe headache unresponsive to acetaminophen or ibuprofen
+- Vision changes (blurred vision, seeing spots, flashing lights, vision loss)
+- Epigastric or right upper quadrant abdominal pain
+- Shortness of breath or difficulty breathing
+- Chest pain
+- Sudden swelling of face or hands
+- Blood pressure ≥160/110 mmHg on home monitoring
+- Decreased urine output (<400 mL/day or very dark urine)
+- Confusion or altered mental status
+- Seizure
+
+Provide written instructions at discharge with 24-hour contact number for concerns.
+
+7.4 LONG-TERM CARDIOVASCULAR RISK COUNSELING
+
+Women with history of preeclampsia have significantly elevated lifetime cardiovascular disease (CVD) risk compared to women with normotensive pregnancies.
+
+Quantified Risk (Meta-analysis Data):
+- Heart failure: 4.19× increased risk (RR 4.19, 95% CI 2.09-8.38)
+- Coronary heart disease: 2.50× increased risk (RR 2.50, 95% CI 1.43-4.37)
+- Cardiovascular death: 2.21× increased risk (RR 2.21, 95% CI 1.83-2.66)
+- Stroke: 1.81× increased risk (RR 1.81, 95% CI 1.29-2.55)
+- Overall CVD: 2-4× increased risk
+
+Risk Amplification Factors:
+- Recurrent preeclampsia: 4-8× CVD risk
+- Early-onset preeclampsia (<34 weeks): Higher risk than late-onset
+- Preeclampsia with preterm delivery: 5-10× higher CVD risk
+- Severe preeclampsia or eclampsia: Higher risk than mild disease
+
+Pathophysiology:
+Unclear whether preeclampsia CAUSES future CVD or UNMASKS pre-existing cardiovascular risk. Likely both:
+- Shared risk factors: Obesity, metabolic syndrome, insulin resistance, inflammation
+- Endothelial dysfunction persists postpartum
+- Preeclampsia may cause permanent microvascular damage
+
+Clinical Implications:
+The American Heart Association now recognizes pregnancy complications (including HDP) as sex-specific risk factors for CVD and recommends lifelong surveillance.
+
+7.5 POSTPARTUM AND LONG-TERM MANAGEMENT RECOMMENDATIONS
+
+At 6-Week Postpartum Visit:
+1. Comprehensive BP check and symptom review
+2. Cardiovascular risk assessment and counseling
+3. Lifestyle modification education
+4. Referral to primary care provider
+5. Discuss future pregnancy planning
+
+Cardiovascular Risk Reduction Strategies (AHA "Life's Essential 8"):
+
+1. Blood Pressure Management:
+   - Long-term BP target <130/80 mmHg
+   - Annual BP screening minimum
+   - Treat hypertension aggressively
+
+2. Weight Management:
+   - Target BMI <25 kg/m² (or ≥5-10% weight loss if overweight)
+   - Postpartum weight retention is CVD risk factor
+
+3. Physical Activity:
+   - ≥150 minutes moderate-intensity aerobic activity per week
+   - Resistance training 2 days per week
+
+4. Healthy Diet:
+   - DASH diet (Dietary Approaches to Stop Hypertension)
+   - Mediterranean diet
+   - Low sodium (<2,300 mg/day), high potassium
+   - Fruits, vegetables, whole grains, lean protein, healthy fats
+
+5. Lipid Management:
+   - Baseline lipid panel at 6-12 weeks postpartum or by 1 year
+   - Statin therapy if indicated (LDL ≥190 or ASCVD risk ≥7.5% in some guidelines)
+
+6. Glucose Management:
+   - Fasting glucose and hemoglobin A1c screening
+   - Women with preeclampsia at higher risk for type 2 diabetes
+   - Lifestyle modifications if prediabetic
+
+7. Tobacco Cessation:
+   - Absolute cessation
+   - Counseling and pharmacotherapy if needed
+
+8. Sleep:
+   - 7-9 hours per night
+   - Screen for sleep apnea (common in women with history of HDP)
+
+Primary Care Handoff:
+- Warm handoff to PCP by 6-12 weeks postpartum
+- Provide summary of pregnancy complications, medications, risk factors
+- Emphasize need for annual cardiovascular risk assessment
+
+Annual Surveillance (Lifelong):
+- Blood pressure
+- Weight and BMI
+- Lipid profile
+- Fasting glucose or hemoglobin A1c
+- Assessment of diet, exercise, smoking status
+
+7.6 FUTURE PREGNANCY COUNSELING
+
+Preconception Counseling:
+Women with prior HDP considering future pregnancy should receive comprehensive preconception counseling.
+
+Recurrence Risk:
+- Prior gestational hypertension: 15-25% recurrence
+- Prior preeclampsia without severe features: 15-20% recurrence
+- Prior severe preeclampsia or eclampsia: 25-65% recurrence (depends on severity and gestational age)
+- Prior preeclampsia with delivery <34 weeks: Up to 40% recurrence
+
+Risk Reduction Strategies for Future Pregnancy:
+1. Optimize chronic conditions before conception:
+   - Control hypertension (target <140/90)
+   - Achieve healthy weight (BMI <30 if possible)
+   - Optimize diabetes control
+   - Treat renal disease
+
+2. Low-dose aspirin prophylaxis:
+   - 81 mg daily starting 12-16 weeks' gestation
+   - Continue until delivery
+   - MANDATORY for all women with prior preeclampsia
+
+3. Calcium supplementation:
+   - Consider if low dietary calcium intake (<600 mg/day)
+   - 1,000-2,000 mg daily may reduce preeclampsia risk in calcium-deficient populations
+   - Standard U.S. prenatal vitamins contain 200-300 mg; additional supplementation may be needed
+
+4. Early prenatal care:
+   - First visit by 8-10 weeks
+   - Baseline BP and labs
+   - Discuss risks and monitoring plan
+
+5. Enhanced monitoring:
+   - More frequent visits (every 2 weeks in third trimester)
+   - Serial growth ultrasounds
+   - Consider angiogenic factor testing if available
+
+Contraception:
+- All forms of contraception are safe for women with history of HDP
+- Combined hormonal contraceptives (pills, patch, ring) are NOT contraindicated
+  - May slightly increase BP in some women - monitor
+  - Benefits usually outweigh risks
+- Progestin-only methods (IUD, implant, pill) have no BP effects
+- Permanent sterilization if family complete
+
+Breastfeeding:
+- Encouraged - may reduce long-term maternal CVD risk
+- Compatible with most antihypertensive medications
+
+==============================================================================
+SECTION 8: MEDICAL CODING REFERENCE
+==============================================================================
+
+8.1 ICD-10-CM DIAGNOSIS CODES (2024)
+
+GESTATIONAL HYPERTENSION:
+- O13.1: Gestational hypertension without significant proteinuria, first trimester
+- O13.2: Gestational hypertension without significant proteinuria, second trimester
+- O13.3: Gestational hypertension without significant proteinuria, third trimester
+- O13.4: Gestational hypertension without significant proteinuria, complicating childbirth
+- O13.5: Gestational hypertension without significant proteinuria, complicating the puerperium
+
+CHRONIC HYPERTENSION COMPLICATING PREGNANCY:
+- O10.011-O10.03: Pre-existing essential hypertension complicating pregnancy (by trimester)
+- O10.111-O10.13: Pre-existing hypertensive heart disease complicating pregnancy
+- O10.211-O10.23: Pre-existing hypertensive chronic kidney disease complicating pregnancy
+- O10.311-O10.33: Pre-existing hypertensive heart and chronic kidney disease
+- O10.411-O10.43: Pre-existing secondary hypertension complicating pregnancy
+- O10.911-O10.93: Unspecified pre-existing hypertension complicating pregnancy
+
+PREECLAMPSIA WITHOUT SEVERE FEATURES:
+- O14.00: Mild to moderate pre-eclampsia, unspecified trimester
+- O14.02: Mild to moderate pre-eclampsia, second trimester
+- O14.03: Mild to moderate pre-eclampsia, third trimester
+- O14.04: Mild to moderate pre-eclampsia, complicating childbirth
+- O14.05: Mild to moderate pre-eclampsia, complicating the puerperium
+
+PREECLAMPSIA WITH SEVERE FEATURES:
+- O14.10: Severe pre-eclampsia, unspecified trimester
+- O14.12: Severe pre-eclampsia, second trimester
+- O14.13: Severe pre-eclampsia, third trimester
+- O14.14: Severe pre-eclampsia, complicating childbirth
+- O14.15: Severe pre-eclampsia, complicating the puerperium
+
+HELLP SYNDROME:
+- O14.20: HELLP syndrome, unspecified trimester
+- O14.22: HELLP syndrome, second trimester
+- O14.23: HELLP syndrome, third trimester
+- O14.24: HELLP syndrome, complicating childbirth
+- O14.25: HELLP syndrome, complicating the puerperium
+
+ECLAMPSIA:
+- O15.00: Eclampsia in pregnancy, unspecified trimester
+- O15.02: Eclampsia in pregnancy, second trimester
+- O15.03: Eclampsia in pregnancy, third trimester
+- O15.1: Eclampsia complicating labor and delivery
+- O15.2: Eclampsia in the puerperium
+
+SUPERIMPOSED PREECLAMPSIA:
+- O11.1: Pre-existing hypertension with pre-eclampsia, first trimester
+- O11.2: Pre-existing hypertension with pre-eclampsia, second trimester
+- O11.3: Pre-existing hypertension with pre-eclampsia, third trimester
+- O11.4: Pre-existing hypertension with pre-eclampsia, complicating childbirth
+- O11.5: Pre-existing hypertension with pre-eclampsia, complicating the puerperium
+(Must also code the underlying chronic hypertension with O10.xx code)
+
+8.2 SNOMED CT TERMINOLOGY CODES
+
+- Gestational hypertension: 48194001
+- Pre-eclampsia: 15938005
+- Severe pre-eclampsia: 71578004
+- HELLP syndrome: 36897000
+- Eclampsia: 15394000
+- Chronic hypertension in pregnancy: 10752641000119102
+- Superimposed pre-eclampsia: 44169009
+- History of pre-eclampsia: 161765003
+- RhD-negative: 165746003 (if applicable for Rh prophylaxis documentation)
+
+8.3 LOINC CODES FOR LABORATORY TESTS
+
+BLOOD PRESSURE:
+- Systolic blood pressure: 8480-6
+- Diastolic blood pressure: 8462-4
+- Blood pressure panel: 85354-9
+
+COMPLETE BLOOD COUNT:
+- Complete blood count panel: 58410-2
+- Platelet count: 26515-7
+- Hemoglobin: 718-7
+- Hematocrit: 4544-3
+
+METABOLIC PANEL:
+- Comprehensive metabolic 2000 panel: 24323-8
+- Serum creatinine: 2160-0
+- Blood urea nitrogen: 3094-0
+- Glucose: 2345-7
+
+HEPATIC FUNCTION:
+- Aspartate aminotransferase (AST): 1920-8
+- Alanine aminotransferase (ALT): 1742-6
+- Lactate dehydrogenase (LDH): 2532-0
+- Total bilirubin: 1975-2
+- Indirect bilirubin: 1971-1
+
+PROTEINURIA:
+- Protein/creatinine ratio, urine: 34366-5
+- Protein, 24-hour urine: 2889-4
+- Protein, urine dipstick: 5804-0
+
+ADDITIONAL:
+- Uric acid: 3084-1
+- Magnesium, serum: 19123-9
+- Blood type and Rh: 882-1
+- Antibody screen: 890-4
+
+ANGIOGENIC FACTORS:
+- Soluble fms-like tyrosine kinase-1 (sFlt-1): 49919-6
+- Placental growth factor (PlGF): 82985-6
+- sFlt-1/PlGF ratio: (no single LOINC; calculated)
+
+8.4 RxNORM MEDICATION CODES
+
+ANTIHYPERTENSIVES:
+- Aspirin: 1191
+- Labetalol: 6185
+- Nifedipine: 7417
+- Methyldopa: 6876
+- Hydralazine: 5470
+- Enalapril: 3827
+- Captopril: 1998
+- Amlodipine: 17767
+
+SEIZURE PROPHYLAXIS:
+- Magnesium sulfate: 6585
+- Calcium gluconate (antidote): 1908
+
+CORTICOSTEROIDS:
+- Betamethasone: 1346
+- Dexamethasone: 3264
+
+UTEROTONIC AGENTS (Avoid Methylergonovine in HDP):
+- Oxytocin: 7731
+- Misoprostol: 7059
+- Carboprost: 1822
+
+8.5 CPT PROCEDURE CODES
+
+FETAL MONITORING:
+- Fetal non-stress test (NST): 59025
+- Biophysical profile without NST: 76815
+- Biophysical profile with NST: 76818
+- Umbilical artery Doppler velocimetry: 76820
+- Fetal middle cerebral artery Doppler: 76821
+
+ULTRASOUND:
+- Complete obstetric ultrasound, single fetus: 76805
+- Complete obstetric ultrasound, each additional fetus: 76810
+- Limited obstetric ultrasound: 76815
+- Transvaginal obstetric ultrasound: 76817
+
+INTRAVENOUS THERAPY:
+- IV infusion, initial hour: 96365
+- IV infusion, each additional hour: 96366
+- IV push, single or initial: 96374
+- IV push, each additional: 96375
+
+COUNSELING AND PREVENTIVE SERVICES:
+- Preventive medicine counseling (aspirin): 99401-99404
+- Postpartum follow-up visit: 59430
+
+DELIVERY:
+- Vaginal delivery only: 59409
+- Vaginal delivery including antepartum and postpartum care: 59410
+- Cesarean delivery only: 59514
+- Cesarean delivery including antepartum and postpartum care: 59510
+
+BLOOD PRESSURE MONITORING:
+- Ambulatory blood pressure monitoring, setup: 93784
+- Ambulatory BP monitoring, physician review: 93786
+
+==============================================================================
+SECTION 9: REFERENCES AND EVIDENCE BASE
+==============================================================================
+
+PRIMARY CLINICAL GUIDELINES:
+
+1. American College of Obstetricians and Gynecologists (ACOG). Gestational Hypertension and Preeclampsia: ACOG Practice Bulletin, Number 222. Obstet Gynecol. 2020;135(6):e237-e260. doi:10.1097/AOG.0000000000003891
+   - Primary U.S. guideline for diagnosis and management of HDP
+   - Most recent reaffirmation: 2022
+
+2. U.S. Preventive Services Task Force. Aspirin Use to Prevent Preeclampsia and Related Morbidity and Mortality: U.S. Preventive Services Task Force Recommendation Statement. JAMA. 2021;326(12):1186-1191. doi:10.1001/jama.2021.14781
+   - Grade B recommendation for aspirin prophylaxis
+   - Defines high-risk and moderate-risk criteria
+
+3. American College of Obstetricians and Gynecologists. Low-Dose Aspirin Use During Pregnancy: ACOG Committee Opinion No. 743. Obstet Gynecol. 2018;132(1):e44-e52.
+   - Supports USPSTF recommendations
+   - Provides implementation guidance
+
+4. Tita AT, Szychowski JM, Boggess K, et al. Treatment for Mild Chronic Hypertension during Pregnancy (CHAP Trial). N Engl J Med. 2022;386(19):1781-1792. doi:10.1056/NEJMoa2201295
+   - Landmark trial demonstrating benefit of treating chronic hypertension at 140/90 threshold
+   - Changed practice in 2022-2023
+
+5. Society for Maternal-Fetal Medicine (SMFM). #33: Manag ement of Hypertension in Pregnancy. Am J Obstet Gynecol. 2015;213(5):709-711.
+   - Complementary guidance to ACOG
+
+SYSTEMATIC REVIEWS AND META-ANALYSES:
+
+6. Rolnik DL, Wright D, Poon LC, et al. Aspirin versus Placebo in Pregnancies at High Risk for Preterm Preeclampsia. N Engl J Med. 2017;377(7):613-622.
+   - ASPRE trial demonstrating benefit of aspirin
+
+7. Magee LA, von Dadelszen P, Rey E, et al. Less-tight versus tight control of hypertension in pregnancy (CHIPS trial). N Engl J Med. 2015;372(5):407-417.
+   - Showed no benefit to tight BP control in mild-moderate hypertension
+
+8. Altman D, Carroli G, Duley L, et al. Do women with pre-eclampsia, and their babies, benefit from magnesium sulphate? The Magpie Trial: a randomised placebo-controlled trial. Lancet. 2002;359(9321):1877-1890.
+   - Established magnesium sulfate as standard for severe preeclampsia
+
+LONG-TERM CARDIOVASCULAR OUTCOMES:
+
+9. American Heart Association. Life's Essential 8: Updating and Enhancing the American Heart Association's Construct of Cardiovascular Health. Circulation. 2022;146(5):e18-e43.
+   - Framework for cardiovascular risk reduction
+
+10. Garovic VD, Dechend R, Easterling T, et al. Hypertension in Pregnancy: Diagnosis, Blood Pressure Goals, and Pharmacotherapy. Hypertension. 2022;79(2):e21-e41.
+    - Comprehensive AHA scientific statement on HDP
+
+11. Brown MC, Best KE, Pearce MS, et al. Cardiovascular disease risk in women with pre-eclampsia: systematic review and meta-analysis. Eur J Epidemiol. 2013;28(1):1-19.
+    - Quantifies long-term CVD risk after preeclampsia
+
+ADDITIONAL EVIDENCE:
+
+12. Society of Obstetricians and Gynaecologists of Canada. Diagnosis, Evaluation, and Management of the Hypertensive Disorders of Pregnancy: Executive Summary. J Obstet Gynaecol Can. 2014;36(5):416-441.
+    - International perspective, similar recommendations
+
+13. National Institute for Health and Care Excellence (NICE). Hypertension in pregnancy: diagnosis and management. NICE guideline [NG133]. 2019. Updated 2023.
+    - UK guidelines, evidence-based recommendations
+
+14. Zeisler H, Llurba E, Chantraine F, et al. Predictive Value of the sFlt-1:PlGF Ratio in Women with Suspected Preeclampsia. N Engl J Med. 2016;374(1):13-22.
+    - Validation of angiogenic biomarkers
+
+==============================================================================
+CONCLUSION
+==============================================================================
+
+This evidence-based care pathway integrates current ACOG Practice Bulletin 222 (2020), USPSTF recommendations (2021), and the CHAP trial findings (2022) to provide comprehensive guidance for the management of hypertensive disorders in pregnancy. Three clinical imperatives form the foundation of modern care:
+
+1. UNIVERSAL FIRST-TRIMESTER RISK ASSESSMENT: All pregnant patients should be screened for preeclampsia risk factors by 12 weeks' gestation. Those with high-risk factors or multiple moderate-risk factors should receive low-dose aspirin 81 mg daily starting after 12 weeks (ideally before 16 weeks) and continuing until delivery. This intervention reduces preeclampsia incidence by 15%, preterm birth by 20%, and perinatal mortality by 21%.
+
+2. IMMEDIATE TREATMENT OF SEVERE-RANGE HYPERTENSION: Blood pressure ≥160/110 mmHg requires urgent treatment within 30-60 minutes using standardized escalation protocols (IV labetalol, IV hydralazine, or oral nifedipine immediate-release). Target BP is 140-150/90-100 mmHg to prevent maternal stroke while avoiding uteroplacental hypoperfusion. This represents a medical emergency regardless of clinical setting.
+
+3. GESTATIONAL AGE-BASED DELIVERY TIMING: Delivery is the definitive treatment for preeclampsia. Gestational hypertension and preeclampsia without severe features warrant delivery at 37 weeks. Preeclampsia with severe features at ≥34 weeks should be delivered after maternal stabilization. Expectant management before 34 weeks may be considered in stable patients at tertiary centers with appropriate monitoring, though maternal or fetal instability mandates immediate delivery regardless of gestational age.
+
+Key practice updates include the shift to treating chronic hypertension at 140/90 mmHg (based on CHAP trial evidence) while maintaining the principle that mild-range BP in gestational hypertension or preeclampsia without severe features should NOT be treated to avoid masking disease progression. Magnesium sulfate remains the standard seizure prophylaxis for severe preeclampsia and eclampsia, with standardized dosing (4-6 g loading, 2 g/hour maintenance, 24 hours postpartum duration) and clinical monitoring (reflexes, respiratory rate, urine output).
+
+Postpartum care deserves particular emphasis, as blood pressure often peaks 3-6 days after delivery, and de novo postpartum preeclampsia can occur up to 6 weeks postpartum. All women with HDP require BP check within 72 hours of discharge, daily home monitoring during the first week, and in-person evaluation at 7-10 days postpartum. Nifedipine extended-release, labetalol, and enalapril (now safe postpartum) are preferred antihypertensives compatible with breastfeeding.
+
+Long-term cardiovascular risk counseling is imperative. Women with history of preeclampsia face 4-fold increased heart failure risk, 2.5-fold coronary disease risk, and 1.8-fold stroke risk over their lifetime. This necessitates annual cardiovascular screening, aggressive risk factor modification (targeting BP <130/80 mmHg, BMI <25, DASH diet, ≥150 minutes weekly exercise), and warm handoff to primary care by 6-12 weeks postpartum. Future pregnancies require preconception counseling and mandatory aspirin prophylaxis.
+
+By implementing this structured pathway with attention to risk stratification, evidence-based prevention, timely intervention, and longitudinal follow-up, clinicians can optimize maternal and fetal outcomes while reducing the long-term burden of cardiovascular disease in affected women.
+
+END OF CARE PATHWAY DOCUMENT

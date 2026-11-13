@@ -1,0 +1,431 @@
+{
+  "id": "PPL-07d",
+  "title": "Two-query schematic program: False beside Unknown",
+  "status": "Proposed, hand-derived acceptance expectation for a two-query program. Not produced by any PPL compiler or evaluator. A bounded I6 slice (experimentalExecuteFromRawRecords, multi-query normal execution) checks every expected output, trace result, per-query causeAttribution and state from this example's own raw inputs (libs/pathway-language). No end-to-end PPL conformance, I6 completion or clinical approval is implied.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes",
+        "value": [
+          {
+            "id": "q.demo",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "retrieve": {
+                "type": "demo-model/DemoAssessment@0.1",
+                "sources": [
+                  "s1",
+                  "s2"
+                ],
+                "valueSet": "demo-vs/item-x@1"
+              },
+              "corrections": {
+                "authority": "demo-policy/same-source-amend@1"
+              },
+              "admissible": {
+                "episode": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "episode"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.episode"
+                    }
+                  ]
+                },
+                "encounter": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "encounter"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.encounter"
+                    }
+                  ]
+                },
+                "assertionKind": {
+                  "in": [
+                    "ClinicianDocumented",
+                    "PatientReport"
+                  ]
+                }
+              },
+              "policy": "explicit-assertion-v0",
+              "establishes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Affirmed"
+                  }
+                ]
+              },
+              "refutes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Denied"
+                  }
+                ]
+              },
+              "obligations": [
+                {
+                  "disjoint": [
+                    "establishes",
+                    "refutes"
+                  ]
+                }
+              ]
+            },
+            "rationale": "The contract of conformance/explicit-assertion-v0/query/q.demo.json, verbatim: fictional DemoAssessment records, value set demo-vs/item-x@1, policy explicit-assertion-v0, establishes = assertion == Affirmed, refutes = assertion == Denied."
+          },
+          {
+            "id": "q.alt",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "retrieve": {
+                "type": "demo-model/DemoAssessment@0.1",
+                "sources": [
+                  "s1"
+                ],
+                "valueSet": "demo-vs/item-x@1"
+              },
+              "corrections": {
+                "authority": "demo-policy/same-source-amend@1"
+              },
+              "admissible": {
+                "episode": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "episode"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.episode"
+                    }
+                  ]
+                },
+                "encounter": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "encounter"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.encounter"
+                    }
+                  ]
+                },
+                "assertionKind": {
+                  "in": [
+                    "ClinicianDocumented"
+                  ]
+                }
+              },
+              "policy": "explicit-assertion-v0",
+              "establishes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Affirmed"
+                  }
+                ]
+              },
+              "refutes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Denied"
+                  }
+                ]
+              },
+              "obligations": [
+                {
+                  "disjoint": [
+                    "establishes",
+                    "refutes"
+                  ]
+                }
+              ]
+            },
+            "rationale": "Schematic second query (nonclinical): the q.demo contract with sources [s1] only and assertionKind in [ClinicianDocumented] only; same value-set pin, correction authority and criteria."
+          },
+          {
+            "id": "p.demo",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.demo"
+              }
+            }
+          },
+          {
+            "id": "p.alt",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.alt"
+              }
+            }
+          },
+          {
+            "id": "f.demo",
+            "kind": "Finding",
+            "status": {
+              "all": [
+                {
+                  "ref": "applicability"
+                },
+                {
+                  "ref": "p.demo"
+                },
+                {
+                  "ref": "p.alt"
+                }
+              ]
+            },
+            "label": "Schematic finding: demonstration item affirmed (nonclinical)"
+          }
+        ]
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "evaluate"
+  ],
+  "basedOn": null,
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s2",
+          "localId": "r2"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s2:r2:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "EstablishedFalse",
+    "compile": {
+      "outcome": "Compiled",
+      "wellFormed": true,
+      "diagnostics": [],
+      "dependencyEdges": [
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.alt"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.alt",
+          "q.alt"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": null,
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "evidence": {
+          "status": "Known",
+          "value": false,
+          "supportingEvidenceIds": [
+            "s2/r2@1"
+          ]
+        }
+      },
+      "q.alt": {
+        "evidence": {
+          "status": "Unresolved",
+          "causes": [
+            "Missing"
+          ],
+          "candidateEvidenceIds": []
+        }
+      },
+      "p.demo": {
+        "decision": {
+          "value": "False"
+        },
+        "supportingEvidenceIds": [
+          "s2/r2@1"
+        ]
+      },
+      "p.alt": {
+        "decision": {
+          "value": "Unknown",
+          "causes": [
+            "Missing"
+          ]
+        },
+        "candidateEvidenceIds": []
+      },
+      "f.demo": {
+        "status": {
+          "value": "False"
+        },
+        "supportingEvidenceIds": [
+          "s2/r2@1"
+        ]
+      }
+    },
+    "causeAttribution": [
+      {
+        "query": "q.alt",
+        "attribution": [
+          {
+            "cause": "Missing",
+            "origin": "query",
+            "stage": "S6",
+            "reason": "NoInDomainRecord"
+          }
+        ]
+      },
+      {
+        "query": "q.demo",
+        "attribution": []
+      }
+    ],
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Known(false, [s2/r2@1])",
+        "because": "One current Denied record in s2, coverage Complete: Known(false)"
+      },
+      {
+        "output": "q.alt",
+        "source": "/nodes/1/contract",
+        "result": "Unresolved{Missing}",
+        "because": "Sources [s1]: no record in scope, cell s1 Complete: Unresolved{Missing}. Complete coverage with no record is not an explicit negative"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/2/expr",
+        "result": "False",
+        "because": "evidenceValue projects q.demo (contract 5.2)"
+      },
+      {
+        "output": "p.alt",
+        "source": "/nodes/3/expr",
+        "result": "Unknown(Missing)",
+        "because": "evidenceValue projects q.alt (contract 5.2)"
+      },
+      {
+        "output": "f.demo.status",
+        "source": "/nodes/4/status",
+        "result": "False",
+        "because": "all(True, False, Unknown(Missing)) = False; support from the False operand only. q.alt's uncertainty stays visible in its own output"
+      }
+    ]
+  }
+}

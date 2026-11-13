@@ -1,0 +1,109 @@
+# First PPL programs: GERD progressive-dysphagia alarm and its schematic companion
+
+**Status:** Proposed. These are proposed source syntax and hand-derived expectations, the acceptance inputs for the first PPL compiler and evaluator. An experimental compiler (I1, `experimentalCompile` / `experimentalCompilePreview` in [libs/pathway-language](../../../../../libs/pathway-language/README.md)) now compiles both programs and checks the examples’ `compile` and `preview` blocks. Isolated execution (I2, `experimentalExecuteWithSuppliedQueryResults` / `experimentalExecutePreviewWithSuppliedQueryResults`) runs the program expressions. Its query evidence is **supplied**, copied from each example’s expectations, so PPL-01 to PPL-03 are checked only for their applicability, predicate and finding values. PPL-04’s preview outputs are checked in full, because a holed query reads nothing. A bounded I6 slice (`experimentalExecuteFromRawRecords`) also executes PPL-01 to PPL-03 from their own raw records, with the query evidence computed (S1–S6), and checks every expected output, trace `result`, `causeAttribution` and `state`. A second bounded I6 slice (`experimentalExecutePreviewFromRawRecords`) previews PPL-04 from its own raw inputs: every expected output and trace `result`, plus the stages its query ran (none, for a whole-contract hole). Since 2026-11-06 the same entry point also previews PPL-06a–c, whose complete query sits beside an unrelated urgency hole: the query evidence is computed (S1–S6) and every expected output, trace `result` and `causeAttribution` is checked. Since 2026-11-09 the raw-input execution entry point also executes PPL-07a–d, programs with two complete queries over one shared snapshot: each query’s evidence is computed under its own contract and every expected output, trace `result`, each query’s `causeAttribution` and `state` is checked. PPL-08a–c, preview programs with two queries, at least one holed, over one captured input: every expected output and trace `result`, each complete query’s `causeAttribution`, and per query its authoring state, stages run, snapshot-statement handling and (criterion-holed queries) per-record criterion values are checked. I6, program execution and preview from raw inputs, is complete as an experimental increment (first-program contract §8, split 2026-11-11). **No evaluator exists for Needs (I7, not implemented) or acquisition.** The `status` text inside each example file was updated to match (2026-11-05); inputs and expectations are unchanged.
+
+- The GERD program preview-compiles: it is well-formed, its holes become markers, and normal compilation rejects it with one `UNRESOLVED_AUTHORING_HOLE` per hole. It is **not publishable and not clinically executable** while its holes remain.
+- No clinical question is answered. The [interpretation draft](../gerd-progressive-dysphagia-interpretation-draft.md) and the [Q1–Q3 review packet](../gerd-progressive-dysphagia-q1-q3-review.md) keep their statuses: not clinically adjudicated, and L00.1.a remains open.
+- The schematic companion is nonclinical.
+
+The implementation contract for these artifacts is [first-program-implementation-contract.md](../first-program-implementation-contract.md). Its §9 records the language-structure decisions P1–P8, approved by the user for this subset on 2026-10-05.
+
+## Layout
+
+| Path | Content |
+|---|---|
+| `gerd-progressive-dysphagia.ppl.json` | GERD-based program: applicability, evidence query, predicate and finding, with three typed holes |
+| `schematic-demo-finding.ppl.json` | **Nonclinical** companion with the same constructs. Its query is the explicit-assertion-v0 contract, unchanged |
+| `examples/PPL-01.json` … `PPL-08c.json` | Hand-derived acceptance examples (below) |
+| `check.py` | Mechanical checks: JSON, references, quotations, digests, fixture links, diagnostic codes, and no data requests from holes. It is **not** a compiler or a language-conformance test |
+
+## The two programs
+
+Both programs are written in the same source form. Edges are derived from `ref` only; no edge list is stored.
+
+```text
+GERD (proposed; holes marked ⟨…⟩)
+  applicability : Decision          = ⟨H-SCOPE : Decision⟩
+  q.pd          : Evidence<Boolean> = EvidenceQuery(contract = ⟨H-EVIDENCE : EvidenceSelectionContract<Boolean>⟩)
+  p.alarm       : Decision          = evidenceValue(ref q.pd)
+  f.alarm       : Finding           status  = all(ref applicability, ref p.alarm)
+                                    label   = "Progressive dysphagia (particularly solids before liquids)"   (line 86)
+                                    heading = "ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION"                (line 85)
+                                    urgency = ⟨H-URGENCY : UrgencyRequirement⟩
+  edges: p.alarm → q.pd;  f.alarm → applicability;  f.alarm → p.alarm      (acyclic)
+
+Schematic (nonclinical; no holes)
+  applicability : Decision          = all()                                   -- True, written explicitly
+  q.demo        : Evidence<Boolean> = EvidenceQuery(contract = explicit-assertion-v0 over demo-model@0.1:
+                                        establishes = c.assertion == AssertionValue.Affirmed
+                                        refutes     = c.assertion == AssertionValue.Denied
+                                        retrieve demo-vs/item-x@1, sources {s1, s2}, admissibility on episode,
+                                        encounter and assertionKind)
+  p.demo        : Decision          = evidenceValue(ref q.demo)
+  f.demo        : Finding           status = all(ref applicability, ref p.demo)
+  edges: p.demo → q.demo;  f.demo → applicability;  f.demo → p.demo
+```
+
+## GERD program: how each declaration maps
+
+Source: [corpus/GERD-Pregnancy-Care-Pathway.txt](../corpus/GERD-Pregnancy-Care-Pathway.txt), SHA-256 `937859b9…a8f67032`. The digest matches the [manifest](../corpus/manifest.json), whose status is “Design inputs; not approved clinical guidance”. Line 85 is `ALARM SYMPTOMS REQUIRING IMMEDIATE EVALUATION:` and line 86 is `• Progressive dysphagia (particularly solids before liquids)`. `check.py` verifies both lines and the digest.
+
+| Declaration | Explicit source content | Earlier proposed structure | Unresolved clinical interpretation |
+|---|---|---|---|
+| `src.gerd.l85-86` (EvidenceReference) | Lines 85–86, quoted verbatim | Minimal model §1 (source citation); Stage A §5 | None. It is provenance only and never affects a result |
+| `applicability` (Predicate) | Nothing: the passage states no population or encounter scope | Required by Stage A §4.5; minimal model §1, where the finding reads *A* explicitly | **H-SCOPE**: population and encounter scope (A1, A2, Q14). Neither unconditional scope nor same-encounter evidence is assumed |
+| `q.pd` (EvidenceQuery) | Progressive dysphagia is listed as an alarm symptom | Minimal model §1, §5 (`Evidence<Boolean>`, whole-contract hole allowed, §1.1 item 1) | **H-EVIDENCE**: what establishes presence or explicit absence (Q1–Q3), acceptable sources (Q4), recency and encounter/episode scope (Q5, Q7, A2, A3) and conflicts (Q6). `Evidence<Boolean>` itself is a proposed interpretation (minimal model §7, decision 6) |
+| `p.alarm` (Predicate) | — | Minimal model §1, §2: lifted projection of exactly one evidence input | None. It is fixed language behavior whose meaning comes entirely from `q.pd` |
+| `f.alarm` (Finding; declaration kind per Stage A §5, amended 2026-10-05) | Label is line 86 without its bullet; heading is line 85 without its colon | Minimal model §1.1 item 3: status `all(A, alarm)`; attributes separate from status | **H-URGENCY**: what “immediate” requires and whether the finding blocks finalization (Q11–Q13). It is not equated with “urgent” (lines 376, 449; Q12) |
+
+**What the GERD program deliberately does not contain:**
+
+- **A Recommendation for the “evaluation”.** This slice is evidence query → predicate → finding only. What the evaluation is, and its timing (Q8–Q11; minimal model holes H-ACTION and H-IMMEDIATE), stay unresolved and unencoded. The word “evaluation” appears only inside the quoted heading.
+- **Partial contract refinements** (minimal model §5.1). No review answer justifies them yet, so the evidence contract stays one hole.
+- **Lines 288, 298, 375–376, 487 and 582.** They are context only and are not encoded.
+
+## Schematic companion
+
+The companion is **not** an approved or proposed translation of GERD, and its label says it is nonclinical.
+
+- Its query is the contract of [`q.demo.json`](../conformance/explicit-assertion-v0/query/q.demo.json), verbatim; `check.py` verifies the equality. Its records, codes, sources and permission are fictional.
+- Its only extra assumption is the explicit unconditional applicability, `all()` (True), stated in its `rationale`.
+- It has no urgency attribute and no citation, because it represents no source passage.
+- The happy paths use one unambiguous current record. Coverage, context and provenance are supplied explicitly, because explicit-assertion-v0 needs them for a determinate result.
+
+## Acceptance examples
+
+| Example | Program | Entry points | State | Predicate | Finding status |
+|---|---|---|---|---|---|
+| PPL-01 | schematic | compile, evaluate | **EstablishedTrue** | `True` [s1/r1@1] | `True` |
+| PPL-02 | schematic | compile, evaluate | **EstablishedFalse** (explicit Denied record, complete coverage) | `False` [s1/r2@1] | `False` |
+| PPL-03 | schematic | compile, evaluate | **UnresolvedPatientEvidence** (no record; complete coverage is not a negative) | `Unknown(Missing)` | `Unknown(Missing)`, with cause attribution and trace (Need generation is not in this slice) |
+| PPL-04 | GERD | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | Marker [H-EVIDENCE] | Marker [H-EVIDENCE, H-SCOPE]; urgency marker [H-URGENCY]; no patient cause or data request; publication blocked |
+| PPL-05a | schematic + patch | compile, compilePreview | **InvalidProgram**: `UNDEFINED_REFERENCE` | — | — |
+| PPL-05b | schematic + patch | compile, compilePreview | **InvalidProgram**: `TYPE_MISMATCH` (enum literal as an `all` operand) | — | — |
+| PPL-06a | schematic + patch (urgency hole on `f.demo`) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** (the hole is not in the query) | `True` [s1/r1@1] | `True`; urgency marker [H-URGENCY-DEMO]; publication blocked |
+| PPL-06b | schematic + patch (urgency hole on `f.demo`) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | `False` [s1/r2@1] | `False`; urgency marker; publication blocked |
+| PPL-06c | schematic + patch (urgency hole on `f.demo`) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | `Unknown(Missing)` | `Unknown(Missing)` (patient evidence, not authoring); urgency marker; publication blocked |
+| PPL-07a | schematic + patch (second query `q.alt`: sources [s1], assertionKind [ClinicianDocumented]) | compile, evaluate | **EstablishedTrue** | `p.demo` `True` [s1/r1@1]; `p.alt` `True` [s1/r1@1] | `True` [s1/r1@1] (one reference, cited by both queries) |
+| PPL-07b | same patch | compile, evaluate | **UnresolvedPatientEvidence** | `p.demo` `Unknown(Conflicting)`; `p.alt` `True` [s1/r1@1] (s2/r2 outside its sources) | `Unknown(Conflicting)` [s1/r1@1, s2/r2@1] |
+| PPL-07c | same patch | compile, evaluate | **UnresolvedPatientEvidence** | `p.demo` `True` [s1/r115@1]; `p.alt` `Unknown(Inadmissible)` (PatientReport not admitted) | `Unknown(Inadmissible)` [s1/r115@1] |
+| PPL-07d | same patch | compile, evaluate | **EstablishedFalse** | `p.demo` `False` [s2/r2@1]; `p.alt` `Unknown(Missing)` | `False` [s2/r2@1] |
+| PPL-08a | schematic + patch (`q.alt` with an `establishes` hole; Findings `f.demo` and `f.both`) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | `p.demo` `False` [s1/r2@1]; `p.alt` Marker [H-ALT-EST] | `f.demo` `False` [s1/r2@1]; `f.both` Marker [H-ALT-EST] (a marker survives a decisive `False`) |
+| PPL-08b | schematic + patch (`q.alt` a whole-contract hole) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | `p.demo` `Unknown(Conflicting)`; `p.alt` Marker [H-ALT] | `f.demo` `Unknown(Conflicting)` [s1/r1@1, s2/r2@1]; `f.both` Marker [H-ALT], no patient cause |
+| PPL-08c | schematic + patch (`q.demo` with a `refutes` hole, `q.alt` a whole-contract hole) | compile, compilePreview, evaluatePreview | **IncompleteAuthoring** | `p.demo` Marker [H-DEMO-REF]; `p.alt` Marker [H-ALT] | `f.demo` Marker [H-DEMO-REF]; `f.both` Marker [H-ALT, H-DEMO-REF] |
+
+PPL-06a–c add one authoring hole, an urgency on `f.demo` that the query does not read, to PPL-01–03 and keep their inputs and expected values. Program state and Finding status are distinct and can differ: their state is `IncompleteAuthoring` because the program has a hole, while their complete query still yields `True`, `False` or `Unknown(Missing)` patient evidence. They show that a hole elsewhere neither blocks nor changes the query’s evidence.
+
+PPL-07a–d patch the schematic program with a second query, `q.alt`: the `q.demo` contract with sources `[s1]` only and `assertionKind` `[ClinicianDocumented]` only (same value-set pin, correction authority and criteria), its predicate `p.alt`, and `f.demo = all(applicability, p.demo, p.alt)`. Both queries read the same records and snapshot; each is computed under its own contract. PPL-07a reuses EA-001’s input (`q.demo` equals EA-001), PPL-07b EA-007’s (`q.demo` equals EA-007) and PPL-07c EA-115a’s (`q.alt` equals EA-115a, whose query differs from `q.alt` only in also listing s2, which holds no record); PPL-07d’s input is new (one Denied record in s2). The other query of each, the predicates, the finding and the traces are hand-derived. Because there are two queries, `causeAttribution` is a list of `{query, attribution}`, one entry per query, and `basedOn.queries` names which query equals which fixture; `check.py` verifies those equalities.
+
+PPL-08a–c patch the schematic program with a second query `q.alt`, predicates `p.demo`/`p.alt`, `f.demo = all(applicability, p.demo)` (independent of `q.alt`) and `f.both = all(applicability, p.demo, p.alt)`; at least one query is holed, so they are preview programs (`IncompleteAuthoring`, publication blocked). PPL-08a reuses EA-002’s input (`q.demo` equals EA-002) and PPL-08b EA-007’s (`q.demo` equals EA-007), via `basedOn.queries`; PPL-08c has no complete query and reuses EA-001’s input, named by `basedOn.inputFixture`. Their `causeAttribution` lists `{query, attribution}` for the complete queries only (a holed query has no S6). A new `expected.queryPreview` block gives, per query, its authoring state (`Complete` or `Incomplete`), `stagesRun`, `snapshotStatements` (`ReadByS6` or `ValidatedNotRead`) and, for an incomplete query, `criteria`: the per-record `establishes`/`refutes` values its preview-query evaluation returns (`[]` for a whole-contract hole). A complete query’s evidence trace holds S6 summaries only, so no per-record criterion value is claimed for it. `check.py` verifies the fixture equalities, that `queryPreview` names exactly the program’s queries with authoring states matching their contracts, and that `causeAttribution` lists exactly the complete queries.
+
+PPL-01 to PPL-03 (and PPL-06a–c) reuse the inputs of EA-001, EA-002 and EA-005 verbatim. Their query evidence, predicate decision and attributions equal those fixtures’ expectations, and `check.py` verifies the equality. The applicability and finding values, supports and traces are new hand-derived expectations, traced in each file. The fields each example promises are defined in the implementation contract (§4), and its diagnostic codes in §5. Need generation is deliberately absent: the evidence-query contract’s Need semantics are unchanged and unimplemented, and no example promises a Need (contract §3).
+
+## Running the checks
+
+```bash
+python3 docs/superpowers/records/pathway-language/programs/check.py
+```
+
+The script checks references, acyclicity, quotations, digests, patches, pointers, fixture links and the corpus manifest. Passing it does not mean a program compiles or that an expectation is correct under the language.
