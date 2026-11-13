@@ -212,13 +212,14 @@ All configuration checks precede every outcome:
 2. package authenticity;
 3. query ownership;
 4. `subject`: a string without lone surrogates;
-5. `contextEpisode`, then `contextEncounter`: captured once (no accessor, function or non-plain object), exactly one own member, the S3 syntax check of §2.5 / §2.4, and a `known` value without lone surrogates.
+5. `contextEpisode`, then `contextEncounter`: captured once (no accessor, function or non-plain object), exactly one own member, the S3 syntax check of §2.5 / §2.4, and a `known` value without lone surrogates;
+6. the compiled identity components, `query.package` and `query.id`, and then, for a complete contract only, the whole digest projection: each must be RFC 8785-representable, with no lone surrogate. The compiler accepts such strings, and the canonicalizer would serialize them rather than reject them. The error names the offending path, for example `query.package` or `projection.retrieve.valueSet.expansion[0].code` (review P2, 2026-11-13). Package content outside the projection is not checked.
 
 Then a hole gives `noContractIdentity`; else an `unknown` binding gives `unresolvedBindings`; else the key. Caller objects are never frozen, mutated or reread.
 
 ### 7.3 Evidence
 
-`src/__tests__/identity.test.ts` holds 35 tests. The base bytes of section 4 are asserted verbatim, and the expected SHA-256 is computed in the test from those bytes, not from the production projection.
+`src/__tests__/identity.test.ts` holds 36 tests. The base bytes of section 4 are asserted verbatim, and the expected SHA-256 is computed in the test from those bytes, not from the production projection.
 - **Through the public API:** examples X1–X8, X10–X14, X16–X18, X22 and X23.
 - **Through the projection helper, with labelled internal fixtures:** X9, X21 and the other settings the compiler admits one value for.
 - **Structural:** X15, X19 and X20. The API has no snapshot, build or implementation-version input.
@@ -236,10 +237,10 @@ A fault check, not committed, injected 13 faults. Each made at least one test fa
 
 No test shows that a built-in identifier keeps one specified meaning across releases; that remains the Rule B versioning obligation. A specification change needs a new identifier. A code correction to match unchanged semantics keeps the key. Clarifying wording or adding a test needs neither. Recording the implementation version and reevaluating affected Needs belong to the lifecycle sub-slice.
 
-### 7.4 Interpretations made, for review
+### 7.4 Interpretations (reviewed 2026-11-13)
 
-1. **Configuration before outcome.** A malformed binding beside a contract hole or an unknown binding throws, never `noContractIdentity` or `unresolvedBindings`. Invalid input must never become an authoring or binding outcome.
-2. **Hole before unresolved bindings.** Section 1 defines `unresolvedBindings` only for a complete contract. A holed query with unknown bindings therefore gives `noContractIdentity` and does not list the bindings.
-3. **Subject syntax is unspecified.** Any string without lone surrogates is accepted, including `""`, as query-bound selection accepts any string.
-4. **Lone surrogates are rejected in the subject and in `known` bindings,** per CANONICALIZATION.md. The S3 checks accept them, so an evaluation could succeed for a binding that has no identity. Aligning the two is not done here.
-5. **`unresolvedBindings` lists binding names only.** It does not list their causes, as in section 1 and X17. Whether emission needs the causes is the emission slice's decision.
+1. **Configuration before outcome** (agreed). A malformed binding or compiled string beside a contract hole or an unknown binding throws, never `noContractIdentity` or `unresolvedBindings`. Invalid input must never become an authoring or binding outcome.
+2. **Hole before unresolved bindings** (agreed). Section 1 defines `unresolvedBindings` only for a complete contract. A holed query with unknown bindings therefore gives `noContractIdentity` and does not list the bindings.
+3. **Subject syntax** (accepted for this slice). The existing rule is kept: any string, including `""`, as query-bound selection accepts. Lone surrogates are still rejected, because the key must be RFC 8785-representable. No new syntax is invented.
+4. **Lone surrogates are rejected in the subject, the `known` bindings, the package namespace, the query ID and the digest projection,** per CANONICALIZATION.md. **Open consistency gap, kept explicit:** S3 accepts such bindings, and the compiler accepts such package strings. An evaluation can therefore succeed where identity throws. Identity validation is not weakened to match; aligning S3 and the compiler is separate work.
+5. **`unresolvedBindings` lists binding names only** (agreed). It does not list their causes, as in section 1 and X17. Whether emission needs the causes is the emission slice's decision.

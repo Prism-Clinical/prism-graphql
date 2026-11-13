@@ -116,7 +116,9 @@ export function contractDigest(projection: JsonValue): ContractDigest {
  * 2. package: authentic (this exact compiler-produced object);
  * 3. query: a string naming an EvidenceQuery declaration of that package;
  * 4. subject: a string without lone surrogates;
- * 5. contextEpisode, then contextEncounter: plain data (captured once), well-formed per S3 §2.4/§2.5.
+ * 5. contextEpisode, then contextEncounter: plain data (captured once), well-formed per S3 §2.4/§2.5;
+ * 6. the compiled package namespace and query ID, then (complete contract only) the whole digest
+ *    projection: RFC 8785-representable (no lone surrogate), reported by path.
  * Outcomes, in order: a contract with any hole → noContractIdentity (proposal 1: unresolvedBindings
  * applies only to a complete contract); any `unknown` binding → unresolvedBindings (episode, then
  * encounter); otherwise the key.
@@ -159,17 +161,26 @@ export function needIdentity(input: NeedIdentityInput): NeedIdentityResult {
   const episode = binding(fields.get('contextEpisode'), 'contextEpisode', checkEpisode, fail);
   const encounter = binding(fields.get('contextEncounter'), 'contextEncounter', checkEncounter, fail);
 
+  // 6. Identity-relevant compiled strings. The compiler accepts lone surrogates, which RFC 8785
+  // forbids and the canonicalizer would serialize anyway, so they are checked here, by path.
+  const queryId = { package: program.packageId, id: decl.id };
+  const queryProblem = jsonValueProblem(queryId, 'query');
+  if (queryProblem) fail(`${queryProblem}; a Need key needs RFC 8785-representable identity components`);
   const holes = contractHoles(decl.contract);
   if (holes.length > 0) return detach({ noContractIdentity: { holes } });
+  const contract = decl as EvidenceQueryDeclaration;
+  const projection = contractDigestProjection(program, contract);
+  const projectionProblem = jsonValueProblem(projection, 'projection');
+  if (projectionProblem) fail(`${projectionProblem}; the contract digest projection must be RFC 8785-representable`);
+
   const unresolved: UnresolvedBinding[] = [];
   if (!('known' in episode)) unresolved.push('episode');
   if (!('known' in encounter)) unresolved.push('encounter');
   if (unresolved.length > 0) return detach({ unresolvedBindings: unresolved });
 
-  const contract = decl as EvidenceQueryDeclaration;
   const key: NeedKey = {
-    query: { package: program.packageId, id: contract.id },
-    contractDigest: contractDigest(contractDigestProjection(program, contract)),
+    query: queryId,
+    contractDigest: contractDigest(projection),
     subject,
     episode: (episode as { known: string }).known,
     encounter: (encounter as { known: string }).known,

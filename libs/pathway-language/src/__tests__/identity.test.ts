@@ -292,6 +292,29 @@ describe('configuration errors', () => {
     bad({ ...ok, subject: '\uD800' }, /lone surrogate/);
   });
 
+  test('compiled identity components and digest projection must be RFC 8785-representable (review P2)', () => {
+    const LONE = '\uD800';
+    const vs = (code: string, extraCovered: string[] = []) => ({ [PIN]: { expansion: [{ system: 'demo-cs', code }], coveredSystems: ['demo-cs', ...extraCovered] } });
+    const cases: [CompiledPackage, string, RegExp][] = [
+      [compiled(source({ pkg: `pkg.${LONE}` })), 'q.demo', /^query\.package: lone surrogate/],
+      [compiled(source({ qid: `q.${LONE}` })), `q.${LONE}`, /^query\.id: lone surrogate/],
+      [compiled(source({ valueSets: vs(`item-${LONE}`) })), 'q.demo', /^projection\.retrieve\.valueSet\.expansion\[0\]\.code: lone surrogate/],
+      [compiled(source({ valueSets: vs('item-x', [`cs-${LONE}`]) })), 'q.demo', /^projection\.retrieve\.valueSet\.coveredSystems\[0\]: lone surrogate/],
+      [compiled(source({ contract: RETRIEVE({ sources: ['s1', `s${LONE}`] }) })), 'q.demo', /^projection\.retrieve\.sources\[1\]: lone surrogate/],
+    ];
+    for (const [pkg, q, msg] of cases) {
+      expect(() => run(pkg, {}, q)).toThrow(NeedIdentityConfigurationError);
+      expect(() => run(pkg, {}, q)).toThrow(msg);
+      // Never masked by a binding outcome.
+      expect(() => run(pkg, { contextEpisode: { unknown: ['Missing'] } }, q)).toThrow(msg);
+    }
+    // The namespace is checked even when the query has a hole.
+    const holed = preview({ ...source({ pkg: `pkg.${LONE}`, contract: { establishes: { hole: { id: 'H-E', type: 'Decision', explains: 'x' } } } }) });
+    expect(() => run(holed)).toThrow(/^query\.package: lone surrogate/);
+    // A valid surrogate pair is ordinary data.
+    expect(key(compiled(source({ pkg: 'pkg.😀' }))).query.package).toBe('pkg.😀');
+  });
+
   test('malformed bindings are configuration errors, never unresolved', () => {
     const malformed: unknown[] = [
       null, 'E1', [], {}, { known: '' }, { known: '  ' }, { known: 1 }, { known: '\uDC00' }, { unknown: [] }, { unknown: ['Bogus'] },
