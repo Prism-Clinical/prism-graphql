@@ -97,7 +97,7 @@ export type RawMultiQueryExecutionResult = Extract<RawExecutionResult, { readonl
 const RUNTIME_FIELDS = ['subject', 'revisions', 'retractions', 'contextEncounter', 'contextEpisode', 'snapshot'];
 
 /**
- * A stable copy of one runtime value (a record, a retraction or a context), read once, so every
+ * INTERNAL, shared with Need identity. A stable copy of one runtime value (a record, a retraction or a context), read once, so every
  * query sees the same data. Own string-keyed data properties are copied (enumerability, array holes,
  * cycles and `null` prototypes kept), so S1 still judges the copy exactly as it would the original:
  * a cycle stays a cycle, and a container deeper than S1's limit becomes an empty container of the
@@ -110,7 +110,7 @@ const RUNTIME_FIELDS = ['subject', 'revisions', 'retractions', 'contextEncounter
  * ponytail: shared acyclic objects are copied once per path, so a deliberately shared DAG costs as
  * much here as S1's own per-path representability walk already does; memoize if that ever matters.
  */
-function capture(v: unknown, path: string, fail: (m: string) => never, ancestors: Map<object, object> = new Map()): unknown {
+export function capture(v: unknown, path: string, fail: (m: string) => never, ancestors: Map<object, object> = new Map()): unknown {
   if (typeof v === 'function') fail(`${path} is a function; runtime records and contexts must be plain data`);
   if (v === null || typeof v !== 'object') return v;
   const back = ancestors.get(v);

@@ -28,7 +28,8 @@ const INPUT_FIELDS = ['s1', 'valueSet', 'expansion', 'rule', 'contextEncounter']
  */
 const encounterRef = (v: unknown): v is string => typeof v === 'string' && /\P{White_Space}/u.test(v);
 
-function checkContext(b: EncounterBinding): void {
+/** INTERNAL, shared with Need identity: throws EncounterCheckConfigurationError unless `b` is a well-formed context encounter. */
+export function checkContext(b: EncounterBinding): void {
   const fail = () => {
     throw new EncounterCheckConfigurationError(`malformed evaluation encounter ${JSON.stringify(b)}`);
   };

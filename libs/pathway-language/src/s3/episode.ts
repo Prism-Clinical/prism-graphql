@@ -32,7 +32,8 @@ const own = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k)
  */
 const episodeRef = (v: unknown): v is string => typeof v === 'string' && /\P{White_Space}/u.test(v);
 
-function checkContext(b: EpisodeBinding): void {
+/** INTERNAL, shared with Need identity: throws EpisodeCheckConfigurationError unless `b` is a well-formed context episode. */
+export function checkContext(b: EpisodeBinding): void {
   const fail = (): never => {
     throw new EpisodeCheckConfigurationError(`malformed evaluation episode ${JSON.stringify(b)}`);
   };

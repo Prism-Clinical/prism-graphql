@@ -8,7 +8,8 @@
  * evidence-query contract
  * (docs/superpowers/records/pathway-language/evidence-query-to-predicate-contract.md §2, §3.5), and the
  * first PPL compiler subset (first-program-implementation-contract.md, increment I1), and isolated
- * program-expression execution over SUPPLIED query results (I2), which is not end-to-end evaluation.
+ * program-expression execution over SUPPLIED query results (I2), which is not end-to-end evaluation,
+ * and the I7 identity sub-slice (contract digest and structured Need key; no Need is generated).
  * It is not the PPL evaluator, is not clinically approved and must not be used for patient care.
  */
 export { resolveRevisionHistory as experimentalResolveRevisionHistory } from './s1/resolve';
@@ -172,6 +173,8 @@ export type {
 } from './s5/types';
 export { evaluatePreviewQuery as experimentalEvaluatePreviewQuery, PreviewEvaluationConfigurationError } from './preview';
 export type { CriterionMarker, PreviewCriterion, PreviewKey, PreviewQueryInput, PreviewQueryResult, PreviewRecord } from './preview';
+export { needIdentity as experimentalNeedIdentity, NeedIdentityConfigurationError, CONTRACT_DIGEST_SCHEME } from './identity';
+export type { ContractDigest, NeedIdentityInput, NeedIdentityResult, NeedKey, UnresolvedBinding } from './identity';
 export { compile as experimentalCompile, compilePreview as experimentalCompilePreview } from './compile/compile';
 export type {
   CompiledDeclaration,

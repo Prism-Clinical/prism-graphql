@@ -1,6 +1,6 @@
 # Contract digest and structured Need key (I7 identity proposal)
 
-**Status:** Proposed, not accepted as a whole, and not implemented. Decisions O1–O5 were reviewed on 2026-11-12 (section 5): O1 and O4 were revised, O2 and O5 kept, O3 settled at the identity boundary. This is a design record for the first sub-slice of [I7 Needs generation](first-program-implementation-contract.md) (section 8, “Needs generation (I7)”, gap G2). It does not implement anything, decide whether a Need exists, or change any contract semantics, fixture expectation or story status. All content is fictional and nonclinical. **Date:** 2026-11-11. **Revised:** 2026-11-12, applying the review of O1–O5.
+**Status:** Decisions O1–O5 were reviewed on 2026-11-12 (section 5): O1 and O4 were revised, O2 and O5 kept, O3 settled at the identity boundary. Sections 1–4 under those decisions are **implemented experimentally** (2026-11-13, section 7); I7 as a whole is not implemented. The open items of section 5 and the interpretations in 7.4 are not accepted. This is a design record for the first sub-slice of [I7 Needs generation](first-program-implementation-contract.md) (section 8, “Needs generation (I7)”, gap G2). Its implementation (section 7) does not decide whether a Need exists, or change any contract semantics, fixture expectation or story status. All content is fictional and nonclinical. **Date:** 2026-11-11. **Revised:** 2026-11-12, applying the review of O1–O5; 2026-11-13, recording the experimental implementation (section 7).
 
 **Problem statement.** Given a complete compiled evidence-query contract and resolved subject, episode and encounter bindings, define a deterministic contract digest and a structured Need key. Under explicitly defined equivalence rules, equivalent contracts produce the same digest. A change to executable meaning must not accidentally reuse a Need identity. The key is the existing one: (query ID, contract digest, subject, episode binding, encounter binding). This record defines that identity boundary only.
 
@@ -186,3 +186,60 @@ Each row compares a variant with the base. "Same digest" means identical project
 - §6.2 names the first key component "query ID". Representing it as `{package, id}` refines that representation without changing the component's role; §6.3's display tuples stay unchanged.
 - §6.2 lists what the digest covers: the envelope, declared sources, value-set version, authority rule, admissibility rules, criteria and policy version. Each has a member in 2.1. This proposal adds value-set content, language/profile versions and the declaration signature, and states the exclusions.
 - Nothing here changes S1–S7, the EA-083/EA-092 limitation, or any acceptance case.
+
+## 7. Implementation (experimental, 2026-11-13)
+
+Identity only. This section records what `libs/pathway-language` implements; it changes none of sections 1–6.
+
+### 7.1 API and outcomes
+
+`experimentalNeedIdentity({ package, query, subject, contextEpisode, contextEncounter })` (`src/identity.ts`) accepts exactly those five fields:
+- `package` is an authentic `CompiledPackage` or `PreviewPackage`;
+- `query` is the ID of one of its `EvidenceQuery` declarations;
+- the bindings use the existing `{known}` / `{unknown: causes}` notation.
+
+The package supplies every authored setting and the namespace; no digest, projection or namespace override is accepted. The result is detached, deep-frozen, and exactly one of the section 1 outputs:
+- `{ key }` (section 3 shape, `contractDigest: { scheme, sha256 }`);
+- `{ noContractIdentity: { holes } }`;
+- `{ unresolvedBindings }` (`'episode'`, then `'encounter'`).
+
+The projection, normalization and hashing are sections 2.1–2.4, using the existing `canonicalJson` and `node:crypto` SHA-256, with no new dependency. Malformed input throws `NeedIdentityConfigurationError`.
+
+### 7.2 Validation order
+
+All configuration checks precede every outcome:
+1. input shape: a plain object, exactly the five fields, each read once as a data property;
+2. package authenticity;
+3. query ownership;
+4. `subject`: a string without lone surrogates;
+5. `contextEpisode`, then `contextEncounter`: captured once (no accessor, function or non-plain object), exactly one own member, the S3 syntax check of §2.5 / §2.4, and a `known` value without lone surrogates.
+
+Then a hole gives `noContractIdentity`; else an `unknown` binding gives `unresolvedBindings`; else the key. Caller objects are never frozen, mutated or reread.
+
+### 7.3 Evidence
+
+`src/__tests__/identity.test.ts` holds 35 tests. The base bytes of section 4 are asserted verbatim, and the expected SHA-256 is computed in the test from those bytes, not from the production projection.
+- **Through the public API:** examples X1–X8, X10–X14, X16–X18, X22 and X23.
+- **Through the projection helper, with labelled internal fixtures:** X9, X21 and the other settings the compiler admits one value for.
+- **Structural:** X15, X19 and X20. The API has no snapshot, build or implementation-version input.
+
+A fault check, not committed, injected 13 faults. Each made at least one test fail:
+- package qualification dropped;
+- value-set ID without content;
+- locations included;
+- unrelated declarations included;
+- an executable field omitted (`refutes`, `recordType`);
+- each of the four normalizations skipped;
+- a delimiter-joined key;
+- a key for unresolved bindings;
+- a key for an incomplete contract.
+
+No test shows that a built-in identifier keeps one specified meaning across releases; that remains the Rule B versioning obligation. A specification change needs a new identifier. A code correction to match unchanged semantics keeps the key. Clarifying wording or adding a test needs neither. Recording the implementation version and reevaluating affected Needs belong to the lifecycle sub-slice.
+
+### 7.4 Interpretations made, for review
+
+1. **Configuration before outcome.** A malformed binding beside a contract hole or an unknown binding throws, never `noContractIdentity` or `unresolvedBindings`. Invalid input must never become an authoring or binding outcome.
+2. **Hole before unresolved bindings.** Section 1 defines `unresolvedBindings` only for a complete contract. A holed query with unknown bindings therefore gives `noContractIdentity` and does not list the bindings.
+3. **Subject syntax is unspecified.** Any string without lone surrogates is accepted, including `""`, as query-bound selection accepts any string.
+4. **Lone surrogates are rejected in the subject and in `known` bindings,** per CANONICALIZATION.md. The S3 checks accept them, so an evaluation could succeed for a binding that has no identity. Aligning the two is not done here.
+5. **`unresolvedBindings` lists binding names only.** It does not list their causes, as in section 1 and X17. Whether emission needs the causes is the emission slice's decision.
