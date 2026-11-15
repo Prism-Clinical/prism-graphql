@@ -14,7 +14,8 @@
     "test:s2": "jest src/__tests__/s2",
     "test:s3": "jest src/__tests__/s3",
     "test:compile": "jest src/__tests__/compile src/__tests__/program-examples",
-    "test:execute": "jest src/__tests__/execute src/__tests__/program-examples"
+    "test:execute": "jest src/__tests__/execute src/__tests__/program-examples",
+    "try:ppl": "tsc -p tsconfig.build.json && node dist/try/try-ppl.js"
   },
   "dependencies": {
     "canonicalize": "2.1.0"
