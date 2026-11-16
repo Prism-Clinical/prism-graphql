@@ -33,11 +33,25 @@ import type { JsonValue, NodeRef } from '../s1/types';
 import { compareNodes } from '../s6/base';
 import { compareCodePoints } from '../s1/resolve';
 import { queryEvidence, QueryEvidenceConfigurationError, type QueryEvidence, type QueryEvidenceResult } from '../s6/evidence';
+import { EncounterCheckConfigurationError } from '../s3/encounter';
+import { EpisodeCheckConfigurationError } from '../s3/episode';
 import { evaluateProgram, type RefOps } from './execute';
 import type { DecisionValue, FindingAttributes, Marker, TraceEntry } from './types';
 
 /** Invalid API input or unsupported program scope. Never patient uncertainty. */
 export class RawExecutionConfigurationError extends Error {}
+
+/**
+ * The configuration errors the stages below the raw entry points raise for caller input: query-bound
+ * selection and query evidence (each already normalizing its own sub-stages), and the S3 encounter
+ * and episode checks, which validate the caller's context bindings inside admissibility and are not
+ * wrapped by selection. Every other stage configuration error (S2, assertion kind, combined
+ * admissibility, S4, S5) can only come from inputs the engine itself built from the compiled package,
+ * so it is an engine defect and propagates unchanged.
+ */
+const STAGE_CONFIGURATION_ERRORS = [QuerySelectionConfigurationError, QueryEvidenceConfigurationError, EncounterCheckConfigurationError, EpisodeCheckConfigurationError] as const;
+/** Preview also runs the preview-query evaluator for holed queries. */
+const PREVIEW_STAGE_CONFIGURATION_ERRORS = [...STAGE_CONFIGURATION_ERRORS, PreviewEvaluationConfigurationError] as const;
 
 /** The runtime inputs of query-bound selection. The query, sources, authority, terminology, admissibility, criteria and policy come from the package. */
 export type RawExecutionInput = Omit<QuerySelectionInput, 'package' | 'query' | 'snapshot'> & { readonly snapshot: NonNullable<QuerySelectionInput['snapshot']> };
@@ -194,7 +208,8 @@ export function executeFromRawRecords(pkg: CompiledPackage, input: RawExecutionI
       results.push(queryEvidence({ package: pkg, query: q.id, s4 }));
     }
   } catch (e) {
-    if (e instanceof QuerySelectionConfigurationError || e instanceof QueryEvidenceConfigurationError) fail(e.message);
+    // The original error is kept as `cause`, with its message; anything else is a defect and propagates as is.
+    if (STAGE_CONFIGURATION_ERRORS.some((c) => e instanceof c)) throw new RawExecutionConfigurationError((e as Error).message, { cause: e });
     throw e;
   }
   // A Map: query IDs such as `__proto__` stay ordinary keys.
@@ -372,7 +387,8 @@ export function executePreviewFromRawRecords(pkg: PreviewPackage, input: RawExec
       }
     }
   } catch (e) {
-    if (e instanceof QuerySelectionConfigurationError || e instanceof QueryEvidenceConfigurationError || e instanceof PreviewEvaluationConfigurationError) fail(e.message);
+    // As in normal execution. A RawPreviewConfigurationError from `fail` above is not a stage error and propagates unchanged.
+    if (PREVIEW_STAGE_CONFIGURATION_ERRORS.some((c) => e instanceof c)) throw new RawPreviewConfigurationError((e as Error).message, { cause: e });
     throw e;
   }
   // One evaluator: complete queries give their evidence; holed ones give none (the evaluator keeps

@@ -121,7 +121,7 @@ Copy a file before editing it, or reset it afterwards with `git checkout -- try/
 | 0 | Evaluated. This includes Unknown evidence and a preview with markers |
 | 1 | The compiler refused the program. Diagnostics are printed with their source pointers, and nothing runs |
 | 2 | Usage, file or JSON error, or a scenario field that is unsupported or missing |
-| 3 | The engine rejected the runtime input as a configuration error, for example a malformed `episode` binding |
+| 3 | The engine rejected the runtime input: `RawExecutionConfigurationError` or `RawPreviewConfigurationError`, for example for a malformed `episode` binding |
 | 70 | Unexpected internal error, an engine or runner defect. The stack trace is printed. This is never reported as patient uncertainty |
 
 ## What it shows, and what it cannot explain yet

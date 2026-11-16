@@ -184,7 +184,7 @@ describe('try:ppl failures', () => {
       const r = tryPpl('--program', PROGRAM, '--scenario', write('s.json', { ...s, context: ctx }));
       expect(r.code).toBe(EXIT.configuration);
       expect(r.stdout).toBe('');
-      expect(r.stderr).toMatch(/^configuration error \(\w+ConfigurationError/);
+      expect(r.stderr).toMatch(/^configuration error \(RawExecutionConfigurationError: .*malformed evaluation (episode|encounter)/);
     }
     const r = tryPpl('--program', PROGRAM, '--scenario', write('s.json', { ...s, coverage: 'all' }));
     expect(r.code).toBe(EXIT.configuration);

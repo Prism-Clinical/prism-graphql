@@ -25,17 +25,10 @@ import {
   type RawExecutionInput,
   type RawExecutionResult,
   type RawPreviewResult,
+  RawExecutionConfigurationError,
+  RawPreviewConfigurationError,
 } from '../index';
 import type { RawPreviewQueryResult } from '../execute/raw';
-import * as engine from '../index';
-
-/**
- * Every configuration-error class the library exports. The raw executors wrap most of them, but some
- * stage errors (for example a malformed context binding's EpisodeCheckConfigurationError) reach the
- * caller unwrapped; all are invalid input, never patient uncertainty and never a defect.
- */
-const CONFIGURATION_ERRORS = Object.entries(engine).filter(([k, v]) => k.endsWith('ConfigurationError') && typeof v === 'function').map(([, v]) => v as new (...a: never[]) => Error);
-const isConfigurationError = (e: unknown): e is Error => CONFIGURATION_ERRORS.some((C) => e instanceof C);
 
 export const EXIT = { evaluated: 0, compileRefused: 1, input: 2, configuration: 3, internal: 70 } as const;
 
@@ -277,7 +270,8 @@ export function run(argv: readonly string[], cwd: string = process.cwd()): RunOu
   try {
     result = compiled.outcome === 'Compiled' ? experimentalExecuteFromRawRecords(compiled.package, scenario.input) : experimentalExecutePreviewFromRawRecords(compiled.package, scenario.input);
   } catch (e) {
-    if (isConfigurationError(e)) {
+    // The executors' own boundary errors: every expected input failure arrives as one of these two.
+    if (e instanceof RawExecutionConfigurationError || e instanceof RawPreviewConfigurationError) {
       return done(EXIT.configuration, '', `configuration error (${e.constructor.name}: the engine rejected this input; no evaluation happened): ${e.message}\n`);
     }
     throw e;
