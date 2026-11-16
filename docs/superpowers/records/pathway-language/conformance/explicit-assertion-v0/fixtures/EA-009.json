@@ -1,0 +1,128 @@
+{
+  "id": "EA-009",
+  "contractCases": [
+    9
+  ],
+  "title": "Only inadmissible evidence",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r5"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N0",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r5:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Inadmissible"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r5@1"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Inadmissible"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Inadmissible",
+        "origin": "query",
+        "stage": "S6",
+        "reason": "InadmissibleSeen"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Inadmissible"
+        ]
+      },
+      "deferred": null,
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "admissibility",
+        "ref": "s1/r5@1",
+        "value": "Inadmissible",
+        "reason": "OtherEncounter"
+      }
+    ]
+  }
+}

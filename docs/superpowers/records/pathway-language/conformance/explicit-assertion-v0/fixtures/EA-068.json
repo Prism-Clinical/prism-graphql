@@ -1,0 +1,185 @@
+{
+  "id": "EA-068",
+  "contractCases": [
+    68
+  ],
+  "title": "Absent versus null under one RevisionRef",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": null,
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a1",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Missing",
+        "Conflicting",
+        "Invalid"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r1@1#617d3ed774ad251acc593cb90e3cd47e44148717738ce58efb8525a77faf96fd",
+        "s1/r1@1#c71b637b6adabafcdf52ab11b1c1fb2bfb62c1cfc5886b922016f3f0a37ad56e"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Missing",
+        "Conflicting",
+        "Invalid"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "s1/r1@1#c71b637b6adabafcdf52ab11b1c1fb2bfb62c1cfc5886b922016f3f0a37ad56e",
+        "stage": "S5",
+        "reason": "FieldAbsent:assertion"
+      },
+      {
+        "cause": "Conflicting",
+        "origin": "s1/r1",
+        "stage": "S1",
+        "reason": "PayloadConflict"
+      },
+      {
+        "cause": "Invalid",
+        "origin": "s1/r1@1#617d3ed774ad251acc593cb90e3cd47e44148717738ce58efb8525a77faf96fd",
+        "stage": "S5",
+        "reason": "FieldMalformed:assertion"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Missing",
+          "Conflicting",
+          "Invalid"
+        ]
+      },
+      "deferred": null,
+      "obligations": [
+        {
+          "kind": "CorrectRecord",
+          "needKey": {
+            "query": "q.demo",
+            "contractDigest": "d1",
+            "subject": "P1",
+            "episode": "E1",
+            "encounter": "N1"
+          },
+          "record": "s1/r1"
+        }
+      ]
+    },
+    "traceAssertions": [
+      {
+        "fact": "variants",
+        "ref": "s1/r1@1",
+        "value": [
+          "s1/r1@1#617d3ed774ad251acc593cb90e3cd47e44148717738ce58efb8525a77faf96fd",
+          "s1/r1@1#c71b637b6adabafcdf52ab11b1c1fb2bfb62c1cfc5886b922016f3f0a37ad56e"
+        ]
+      }
+    ]
+  }
+}

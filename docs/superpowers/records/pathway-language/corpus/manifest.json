@@ -1,0 +1,66 @@
+{
+  "status": "Design inputs; not approved clinical guidance",
+  "recorded": "2026-09-30",
+  "files": [
+    {
+      "file": "GBS-Pregnancy-Care-Plan.docx.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "b97d8adc4fbcd3ee1ec534feab44999328fa391eb7e9eacd63daf13e5950e93a",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "gestational-diabetes-care-plan.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "def603cdb765ccbc777b559e03b4e8d33b2582e23041e45c2613e209e45693bd",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "hypertensive-disorders-pregnancy-care-pathway.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "43c31b56a4eaddd99e98852d9f7c78a99425ef8e8ad7c405d3ccfff87fdd807e",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "pregnancy-prior-uterine-surgery-care-pathway.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "bccd0c26c9a871fb7f00ee6e64bae586bf393f89b8c74d9b58d8065ee3f52b40",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "hyperthyroidism-pregnancy-structured.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "ea4a6cea16d84e8080f08a07af1665d18428c504431690f15ba5b4110f5d5737",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "Chronic_Hypertension_Pregnancy_Care_Pathway.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "15382949c3ab4f651c7eb8b68d934b1bd9b4c448cac4869448e293f2ea3f77e4",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "GERD-Pregnancy-Care-Pathway.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "937859b9b22f672e4d212cdd99b188f1e1d12b6cd4217459155d2c34a8f67032",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "UTI_Pregnancy_Care_Pathway.txt",
+      "description": "User-supplied pregnancy care document",
+      "sha256": "f8b6ed55c0b5100bf2f69db9ce7264fa8b3ffc3375551d947fe9add7d4173188",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "temporal-logic-in-prism-node-pathway.txt",
+      "description": "Temporal Logic in Prism\u2019s Node Pathway \u2014 supplied design discussion",
+      "sha256": "5fb2b9b99db42fc343f62aa2858d15e6f83025138a198a9167b263c01807e92c",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    },
+    {
+      "file": "time-acuity-reading-of-data.txt",
+      "description": "Time, Acuity, and the Reading of Data \u2014 supplied problem definition",
+      "sha256": "420161d246ce198c8b0912daa8165da1e797de4af19d62a55702beb00a2f6908",
+      "provenance": "Supplied by the project owner for architecture review; committed at their request."
+    }
+  ]
+}

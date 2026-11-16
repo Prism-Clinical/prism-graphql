@@ -1,0 +1,465 @@
+{
+  "id": "PPL-08c",
+  "title": "Multi-query preview: two incomplete queries with different hole kinds",
+  "status": "Proposed, hand-derived acceptance expectation for a multi-query preview program. Not produced by any PPL compiler or evaluator. A bounded I6 slice (experimentalExecutePreviewFromRawRecords, multi-query preview) checks every expected output and trace source/result, each complete query's causeAttribution, and per query (queryPreview): authoring state, stages run, snapshot-statement handling and, for a criterion-holed query, the per-record establishes/refutes values its preview-query evaluation returns. A complete query's evidence trace holds S6 summaries only; no per-record S5 value is claimed for it. The program is IncompleteAuthoring with publication Blocked. No end-to-end PPL conformance, I6 completion or clinical approval is implied.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes",
+        "value": [
+          {
+            "id": "q.demo",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "retrieve": {
+                "type": "demo-model/DemoAssessment@0.1",
+                "sources": [
+                  "s1",
+                  "s2"
+                ],
+                "valueSet": "demo-vs/item-x@1"
+              },
+              "corrections": {
+                "authority": "demo-policy/same-source-amend@1"
+              },
+              "admissible": {
+                "episode": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "episode"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.episode"
+                    }
+                  ]
+                },
+                "encounter": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "encounter"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.encounter"
+                    }
+                  ]
+                },
+                "assertionKind": {
+                  "in": [
+                    "ClinicianDocumented",
+                    "PatientReport"
+                  ]
+                }
+              },
+              "policy": "explicit-assertion-v0",
+              "establishes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Affirmed"
+                  }
+                ]
+              },
+              "refutes": {
+                "hole": {
+                  "id": "H-DEMO-REF",
+                  "type": "Decision",
+                  "explains": "Schematic criterion hole: q.demo's refutes criterion is deliberately left undecided (nonclinical)."
+                }
+              },
+              "obligations": [
+                {
+                  "disjoint": [
+                    "establishes",
+                    "refutes"
+                  ]
+                }
+              ]
+            },
+            "rationale": "The q.demo contract with its refutes criterion replaced by an authoring hole (nonclinical); establishes stays complete."
+          },
+          {
+            "id": "q.alt",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "hole": {
+                "id": "H-ALT",
+                "type": "EvidenceSelectionContract<Boolean>",
+                "explains": "Schematic whole-contract hole: q.alt's evidence contract is deliberately left undecided (nonclinical)."
+              }
+            },
+            "rationale": "Schematic second query (nonclinical): a whole-contract authoring hole."
+          },
+          {
+            "id": "p.demo",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.demo"
+              }
+            }
+          },
+          {
+            "id": "p.alt",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.alt"
+              }
+            }
+          },
+          {
+            "id": "f.demo",
+            "kind": "Finding",
+            "status": {
+              "all": [
+                {
+                  "ref": "applicability"
+                },
+                {
+                  "ref": "p.demo"
+                }
+              ]
+            },
+            "label": "Schematic finding: demonstration item affirmed (nonclinical)"
+          },
+          {
+            "id": "f.both",
+            "kind": "Finding",
+            "status": {
+              "all": [
+                {
+                  "ref": "applicability"
+                },
+                {
+                  "ref": "p.demo"
+                },
+                {
+                  "ref": "p.alt"
+                }
+              ]
+            },
+            "label": "Schematic finding: both demonstration queries (nonclinical)"
+          }
+        ]
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "compilePreview",
+    "evaluatePreview"
+  ],
+  "basedOn": {
+    "inputFixture": "EA-001",
+    "queries": [],
+    "claim": "No query is complete, so no evidence exists. q.demo is criterion-holed: S1–S5 run on EA-001's Affirmed record s1/r1, its complete establishes criterion is True and refutes is a Marker. q.alt is a whole-contract hole: no stage runs. Every output reading a query keeps that query's marker; f.both keeps both."
+  },
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "IncompleteAuthoring",
+    "compile": {
+      "outcome": "CompileFailure",
+      "wellFormed": true,
+      "diagnostics": [
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-ALT",
+          "location": "/nodes/1/contract/hole"
+        },
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-DEMO-REF",
+          "location": "/nodes/0/contract/refutes/hole"
+        }
+      ],
+      "dependencyEdges": [
+        [
+          "f.both",
+          "applicability"
+        ],
+        [
+          "f.both",
+          "p.alt"
+        ],
+        [
+          "f.both",
+          "p.demo"
+        ],
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.alt",
+          "q.alt"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": {
+      "outcome": "PreviewPackage",
+      "publication": "Blocked",
+      "markers": [
+        {
+          "output": "f.both.status",
+          "holes": [
+            "H-ALT",
+            "H-DEMO-REF"
+          ]
+        },
+        {
+          "output": "f.demo.status",
+          "holes": [
+            "H-DEMO-REF"
+          ]
+        },
+        {
+          "output": "p.alt",
+          "holes": [
+            "H-ALT"
+          ]
+        },
+        {
+          "output": "p.demo",
+          "holes": [
+            "H-DEMO-REF"
+          ]
+        },
+        {
+          "output": "q.alt",
+          "holes": [
+            "H-ALT"
+          ]
+        },
+        {
+          "output": "q.demo",
+          "holes": [
+            "H-DEMO-REF"
+          ]
+        }
+      ],
+      "inspectable": {
+        "f.both.label": "Schematic finding: both demonstration queries (nonclinical)",
+        "f.demo.label": "Schematic finding: demonstration item affirmed (nonclinical)"
+      }
+    },
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "marker": {
+          "holes": [
+            "H-DEMO-REF"
+          ]
+        },
+        "stagesRun": [
+          "S1",
+          "S2",
+          "S3",
+          "S4",
+          "S5"
+        ]
+      },
+      "q.alt": {
+        "marker": {
+          "holes": [
+            "H-ALT"
+          ]
+        },
+        "stagesRun": []
+      },
+      "p.demo": {
+        "marker": {
+          "holes": [
+            "H-DEMO-REF"
+          ]
+        }
+      },
+      "p.alt": {
+        "marker": {
+          "holes": [
+            "H-ALT"
+          ]
+        }
+      },
+      "f.demo": {
+        "status": {
+          "marker": {
+            "holes": [
+              "H-DEMO-REF"
+            ]
+          }
+        }
+      },
+      "f.both": {
+        "status": {
+          "marker": {
+            "holes": [
+              "H-ALT",
+              "H-DEMO-REF"
+            ]
+          }
+        }
+      }
+    },
+    "causeAttribution": [],
+    "queryPreview": {
+      "q.alt": {
+        "queryAuthoring": "Incomplete",
+        "stagesRun": [],
+        "snapshotStatements": "ValidatedNotRead",
+        "criteria": []
+      },
+      "q.demo": {
+        "queryAuthoring": "Incomplete",
+        "stagesRun": [
+          "S1",
+          "S2",
+          "S3",
+          "S4",
+          "S5"
+        ],
+        "snapshotStatements": "ValidatedNotRead",
+        "criteria": [
+          {
+            "record": "s1/r1@1",
+            "establishes": "True",
+            "refutes": "Marker[H-DEMO-REF]"
+          }
+        ]
+      }
+    },
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Marker[H-DEMO-REF]",
+        "because": "Criterion hole H-DEMO-REF: S1–S5 run (establishes only); no S6 and no evidence"
+      },
+      {
+        "output": "q.alt",
+        "source": "/nodes/1/contract",
+        "result": "Marker[H-ALT]",
+        "because": "Whole-contract hole: no evidence stage runs"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/2/expr",
+        "result": "Marker[H-DEMO-REF]",
+        "because": "evidenceValue of a marked output keeps the marker"
+      },
+      {
+        "output": "p.alt",
+        "source": "/nodes/3/expr",
+        "result": "Marker[H-ALT]",
+        "because": "evidenceValue of a marked output keeps the marker"
+      },
+      {
+        "output": "f.demo.status",
+        "source": "/nodes/4/status",
+        "result": "Marker[H-DEMO-REF]",
+        "because": "An operand is marked; the marker is kept"
+      },
+      {
+        "output": "f.both.status",
+        "source": "/nodes/5/status",
+        "result": "Marker[H-ALT, H-DEMO-REF]",
+        "because": "Both query operands are marked; both holes are kept"
+      }
+    ]
+  }
+}

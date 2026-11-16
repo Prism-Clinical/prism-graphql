@@ -1,0 +1,446 @@
+{
+  "id": "PPL-07c",
+  "title": "Two-query schematic program: same value-set pin, different admissibility",
+  "status": "Proposed, hand-derived acceptance expectation for a two-query program. Not produced by any PPL compiler or evaluator. A bounded I6 slice (experimentalExecuteFromRawRecords, multi-query normal execution) checks every expected output, trace result, per-query causeAttribution and state from this example's own raw inputs (libs/pathway-language). No end-to-end PPL conformance, I6 completion or clinical approval is implied.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes",
+        "value": [
+          {
+            "id": "q.demo",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "retrieve": {
+                "type": "demo-model/DemoAssessment@0.1",
+                "sources": [
+                  "s1",
+                  "s2"
+                ],
+                "valueSet": "demo-vs/item-x@1"
+              },
+              "corrections": {
+                "authority": "demo-policy/same-source-amend@1"
+              },
+              "admissible": {
+                "episode": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "episode"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.episode"
+                    }
+                  ]
+                },
+                "encounter": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "encounter"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.encounter"
+                    }
+                  ]
+                },
+                "assertionKind": {
+                  "in": [
+                    "ClinicianDocumented",
+                    "PatientReport"
+                  ]
+                }
+              },
+              "policy": "explicit-assertion-v0",
+              "establishes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Affirmed"
+                  }
+                ]
+              },
+              "refutes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Denied"
+                  }
+                ]
+              },
+              "obligations": [
+                {
+                  "disjoint": [
+                    "establishes",
+                    "refutes"
+                  ]
+                }
+              ]
+            },
+            "rationale": "The contract of conformance/explicit-assertion-v0/query/q.demo.json, verbatim: fictional DemoAssessment records, value set demo-vs/item-x@1, policy explicit-assertion-v0, establishes = assertion == Affirmed, refutes = assertion == Denied."
+          },
+          {
+            "id": "q.alt",
+            "kind": "EvidenceQuery",
+            "subject": "patient",
+            "output": "Evidence<Boolean>",
+            "contract": {
+              "retrieve": {
+                "type": "demo-model/DemoAssessment@0.1",
+                "sources": [
+                  "s1"
+                ],
+                "valueSet": "demo-vs/item-x@1"
+              },
+              "corrections": {
+                "authority": "demo-policy/same-source-amend@1"
+              },
+              "admissible": {
+                "episode": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "episode"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.episode"
+                    }
+                  ]
+                },
+                "encounter": {
+                  "eq": [
+                    {
+                      "field": [
+                        "c",
+                        "encounter"
+                      ]
+                    },
+                    {
+                      "ref": "ctx.encounter"
+                    }
+                  ]
+                },
+                "assertionKind": {
+                  "in": [
+                    "ClinicianDocumented"
+                  ]
+                }
+              },
+              "policy": "explicit-assertion-v0",
+              "establishes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Affirmed"
+                  }
+                ]
+              },
+              "refutes": {
+                "eq": [
+                  {
+                    "field": [
+                      "c",
+                      "assertion"
+                    ]
+                  },
+                  {
+                    "enum": "AssertionValue.Denied"
+                  }
+                ]
+              },
+              "obligations": [
+                {
+                  "disjoint": [
+                    "establishes",
+                    "refutes"
+                  ]
+                }
+              ]
+            },
+            "rationale": "Schematic second query (nonclinical): the q.demo contract with sources [s1] only and assertionKind in [ClinicianDocumented] only; same value-set pin, correction authority and criteria."
+          },
+          {
+            "id": "p.demo",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.demo"
+              }
+            }
+          },
+          {
+            "id": "p.alt",
+            "kind": "Predicate",
+            "expr": {
+              "evidenceValue": {
+                "ref": "q.alt"
+              }
+            }
+          },
+          {
+            "id": "f.demo",
+            "kind": "Finding",
+            "status": {
+              "all": [
+                {
+                  "ref": "applicability"
+                },
+                {
+                  "ref": "p.demo"
+                },
+                {
+                  "ref": "p.alt"
+                }
+              ]
+            },
+            "label": "Schematic finding: demonstration item affirmed (nonclinical)"
+          }
+        ]
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "evaluate"
+  ],
+  "basedOn": {
+    "queries": [
+      {
+        "query": "q.alt",
+        "fixture": "EA-115a"
+      }
+    ],
+    "claim": "q.alt equals EA-115a (a PatientReport record under assertionKind in [ClinicianDocumented]: Inadmissible); EA-115a's query differs from q.alt only in also listing s2, which holds no record. q.demo is hand-derived: it admits PatientReport, so the same record supports it: Known(true)."
+  },
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r115"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "PatientReport",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r115:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "UnresolvedPatientEvidence",
+    "compile": {
+      "outcome": "Compiled",
+      "wellFormed": true,
+      "diagnostics": [],
+      "dependencyEdges": [
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.alt"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.alt",
+          "q.alt"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": null,
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "evidence": {
+          "status": "Known",
+          "value": true,
+          "supportingEvidenceIds": [
+            "s1/r115@1"
+          ]
+        }
+      },
+      "q.alt": {
+        "evidence": {
+          "status": "Unresolved",
+          "causes": [
+            "Inadmissible"
+          ],
+          "candidateEvidenceIds": [
+            "s1/r115@1"
+          ]
+        }
+      },
+      "p.demo": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": [
+          "s1/r115@1"
+        ]
+      },
+      "p.alt": {
+        "decision": {
+          "value": "Unknown",
+          "causes": [
+            "Inadmissible"
+          ]
+        },
+        "candidateEvidenceIds": [
+          "s1/r115@1"
+        ]
+      },
+      "f.demo": {
+        "status": {
+          "value": "Unknown",
+          "causes": [
+            "Inadmissible"
+          ]
+        },
+        "candidateEvidenceIds": [
+          "s1/r115@1"
+        ]
+      }
+    },
+    "causeAttribution": [
+      {
+        "query": "q.alt",
+        "attribution": [
+          {
+            "cause": "Inadmissible",
+            "origin": "query",
+            "stage": "S6",
+            "reason": "InadmissibleSeen"
+          }
+        ]
+      },
+      {
+        "query": "q.demo",
+        "attribution": []
+      }
+    ],
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Known(true, [s1/r115@1])",
+        "because": "assertionKind in [ClinicianDocumented, PatientReport]: the PatientReport record is admissible and Affirmed: Known(true)"
+      },
+      {
+        "output": "q.alt",
+        "source": "/nodes/1/contract",
+        "result": "Unresolved{Inadmissible}",
+        "because": "EA-115a: assertionKind in [ClinicianDocumented] only: the record is inadmissible: Unresolved{Inadmissible}"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/2/expr",
+        "result": "True",
+        "because": "evidenceValue projects q.demo (contract 5.2)"
+      },
+      {
+        "output": "p.alt",
+        "source": "/nodes/3/expr",
+        "result": "Unknown(Inadmissible)",
+        "because": "evidenceValue projects q.alt (contract 5.2)"
+      },
+      {
+        "output": "f.demo.status",
+        "source": "/nodes/4/status",
+        "result": "Unknown(Inadmissible)",
+        "because": "all(True, True, Unknown(Inadmissible)) = Unknown(Inadmissible); candidates from the Unknown operand only"
+      }
+    ]
+  }
+}

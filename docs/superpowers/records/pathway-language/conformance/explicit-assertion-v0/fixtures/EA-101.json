@@ -1,0 +1,150 @@
+{
+  "id": "EA-101",
+  "contractCases": [
+    101
+  ],
+  "title": "Malformed record encounter",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r101"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": 7,
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r101:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Invalid"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r101@1"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Invalid"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Invalid",
+        "origin": "s1/r101@1",
+        "stage": "S3",
+        "reason": "FieldMalformed:encounter"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Invalid"
+        ]
+      },
+      "deferred": null,
+      "obligations": [
+        {
+          "kind": "CorrectRecord",
+          "needKey": {
+            "query": "q.demo",
+            "contractDigest": "d1",
+            "subject": "P1",
+            "episode": "E1",
+            "encounter": "N1"
+          },
+          "record": "s1/r101"
+        }
+      ]
+    },
+    "traceAssertions": [
+      {
+        "fact": "encounterScope",
+        "ref": "s1/r101@1",
+        "value": "Unresolved",
+        "causes": [
+          "Invalid"
+        ]
+      },
+      {
+        "fact": "admissibility",
+        "ref": "s1/r101@1",
+        "value": "UnresolvedAdmissibility",
+        "causes": [
+          "Invalid"
+        ]
+      }
+    ]
+  }
+}

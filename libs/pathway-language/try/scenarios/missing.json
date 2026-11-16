@@ -1,0 +1,33 @@
+{
+  "description": "Fictional, nonclinical. No record; coverage is Complete, which is not a negative (input of EA-005).",
+  "snapshot": "snap-1",
+  "context": {
+    "subject": "P1",
+    "episode": {
+      "known": "E1"
+    },
+    "encounter": {
+      "known": "N1"
+    }
+  },
+  "records": [],
+  "retractions": [],
+  "coverage": [
+    {
+      "id": "cov-all",
+      "appliesTo": {
+        "snapshot": "snap-1"
+      },
+      "recordType": "demo-model/DemoAssessment@0.1",
+      "subject": "P1",
+      "sources": [
+        "s1",
+        "s2"
+      ],
+      "status": "Complete",
+      "attestedBy": "demo-adapter@1"
+    }
+  ],
+  "failures": [],
+  "rejectedItems": []
+}

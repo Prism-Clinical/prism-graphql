@@ -1,0 +1,147 @@
+{
+  "id": "EA-113a",
+  "contractCases": [
+    113
+  ],
+  "title": "Absent record episode with an unknown evaluation episode",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "unknown": [
+          "Conflicting"
+        ]
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r113"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r113:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Missing",
+        "Conflicting"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r113@1"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Missing",
+        "Conflicting"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Missing",
+        "origin": "s1/r113@1",
+        "stage": "S3",
+        "reason": "FieldAbsent:episode"
+      },
+      {
+        "cause": "Conflicting",
+        "origin": "context.episode",
+        "stage": "S3",
+        "reason": "ContextUnknown:episode",
+        "refs": [
+          "s1/r113@1"
+        ]
+      }
+    ],
+    "needs": {
+      "evidence": null,
+      "deferred": {
+        "binding": "episode"
+      },
+      "obligations": []
+    },
+    "traceAssertions": [
+      {
+        "fact": "episodeScope",
+        "ref": "s1/r113@1",
+        "value": "Unresolved",
+        "causes": [
+          "Missing",
+          "Conflicting"
+        ]
+      },
+      {
+        "fact": "admissibility",
+        "ref": "s1/r113@1",
+        "value": "UnresolvedAdmissibility",
+        "causes": [
+          "Missing",
+          "Conflicting"
+        ]
+      },
+      {
+        "fact": "needDeferred",
+        "binding": "episode"
+      }
+    ]
+  }
+}

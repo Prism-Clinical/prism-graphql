@@ -1,0 +1,31 @@
+{
+  "id": "CAN-03",
+  "contractCases": [
+    61
+  ],
+  "title": "Permission set reordered and repeated",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[\"p\",\"demo.permission.amend-record\"]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[\"demo.permission.amend-record\",\"p\",\"demo.permission.amend-record\"]},\"provenance\":{\"acquisition\":\"a1\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": true,
+    "variants": [
+      {
+        "occurrences": [
+          0,
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[\"demo.permission.amend-record\",\"p\"]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "1b763ea0125bb62951ecd3cea2f414947c45f3d953a4c54a7c14f387cab5aa7b"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

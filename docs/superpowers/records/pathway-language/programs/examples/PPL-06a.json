@@ -1,0 +1,222 @@
+{
+  "id": "PPL-06a",
+  "title": "Schematic program, complete query beside an unrelated urgency hole: Finding status True (as PPL-01)",
+  "status": "Proposed, hand-derived acceptance expectation. Not produced by any PPL compiler or evaluator. Same raw input as PPL-01 (fixture EA-001, verbatim); the only change to the schematic program is an urgency authoring hole on f.demo, unrelated to the query. The program is therefore IncompleteAuthoring, while its complete query still yields patient evidence. A bounded I6 slice (experimentalExecutePreviewFromRawRecords, complete-query branch) checks every expected output, trace result and causeAttribution from this example's own raw inputs and snapshot statements (libs/pathway-language). No end-to-end PPL conformance, I6 completion or clinical approval is implied.",
+  "program": {
+    "file": "../schematic-demo-finding.ppl.json",
+    "patch": [
+      {
+        "op": "replace",
+        "path": "/nodes/2",
+        "value": {
+          "id": "f.demo",
+          "kind": "Finding",
+          "status": {
+            "all": [
+              {
+                "ref": "applicability"
+              },
+              {
+                "ref": "p.demo"
+              }
+            ]
+          },
+          "label": "Schematic finding: demonstration item affirmed (nonclinical)",
+          "urgency": {
+            "hole": {
+              "id": "H-URGENCY-DEMO",
+              "type": "UrgencyRequirement",
+              "explains": "Schematic attribute hole: the demonstration finding's urgency is deliberately left undecided (nonclinical)."
+            }
+          }
+        }
+      }
+    ]
+  },
+  "entryPoints": [
+    "compile",
+    "compilePreview",
+    "evaluatePreview"
+  ],
+  "basedOn": {
+    "fixture": "EA-001",
+    "claim": "outputs['q.demo'].evidence and outputs['p.demo'].decision equal EA-001's expected evidence and decision; the urgency hole changes no evidence, predicate or status value"
+  },
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r1"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r1:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "state": "IncompleteAuthoring",
+    "compile": {
+      "outcome": "CompileFailure",
+      "wellFormed": true,
+      "diagnostics": [
+        {
+          "code": "UNRESOLVED_AUTHORING_HOLE",
+          "hole": "H-URGENCY-DEMO",
+          "location": "/nodes/2/urgency/hole"
+        }
+      ],
+      "dependencyEdges": [
+        [
+          "f.demo",
+          "applicability"
+        ],
+        [
+          "f.demo",
+          "p.demo"
+        ],
+        [
+          "p.demo",
+          "q.demo"
+        ]
+      ]
+    },
+    "preview": {
+      "outcome": "PreviewPackage",
+      "publication": "Blocked",
+      "markers": [
+        {
+          "output": "f.demo.urgency",
+          "holes": [
+            "H-URGENCY-DEMO"
+          ]
+        }
+      ],
+      "inspectable": {
+        "f.demo.label": "Schematic finding: demonstration item affirmed (nonclinical)"
+      }
+    },
+    "outputs": {
+      "applicability": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": []
+      },
+      "q.demo": {
+        "evidence": {
+          "status": "Known",
+          "value": true,
+          "supportingEvidenceIds": [
+            "s1/r1@1"
+          ]
+        }
+      },
+      "p.demo": {
+        "decision": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": [
+          "s1/r1@1"
+        ]
+      },
+      "f.demo": {
+        "status": {
+          "value": "True"
+        },
+        "supportingEvidenceIds": [
+          "s1/r1@1"
+        ],
+        "urgency": {
+          "marker": {
+            "holes": [
+              "H-URGENCY-DEMO"
+            ]
+          }
+        }
+      }
+    },
+    "causeAttribution": [],
+    "trace": [
+      {
+        "output": "applicability",
+        "source": "/applicability/expr",
+        "result": "True",
+        "because": "all() over zero operands is True: the schematic scope is unconditional, and says so explicitly"
+      },
+      {
+        "output": "q.demo",
+        "source": "/nodes/0/contract",
+        "result": "Known(true, [s1/r1@1])",
+        "because": "S1 Current(s1/r1@1); S2 InDomain (demo-cs#item-x); S3 Admissible (E1, N1, ClinicianDocumented); S5 establishes True, refutes False, so Supporting; S6 cells s1 and s2 Complete, no gap: rule 2"
+      },
+      {
+        "output": "p.demo",
+        "source": "/nodes/1/expr",
+        "result": "True",
+        "because": "evidenceValue: Known(true) projects to True with the same supporting IDs (contract 5.2)"
+      },
+      {
+        "output": "f.demo.status",
+        "source": "/nodes/2/status",
+        "result": "True",
+        "because": "all(True, True) = True; support is the union of both operands' support"
+      },
+      {
+        "output": "f.demo.urgency",
+        "source": "/nodes/2/urgency",
+        "result": "Marker[H-URGENCY-DEMO]",
+        "because": "Attribute hole; it marks only this attribute, never the status, which stays True"
+      }
+    ]
+  }
+}

@@ -1,0 +1,195 @@
+{
+  "id": "EA-070",
+  "contractCases": [
+    70
+  ],
+  "title": "Three variants of one RevisionRef",
+  "kind": "evaluation",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "evaluation-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r14"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r14:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r14"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a1",
+          "sourceRecordRef": "s1:r14:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r14"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Indeterminate",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a2",
+          "sourceRecordRef": "s1:r14:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "evidence": {
+      "status": "Unresolved",
+      "causes": [
+        "Conflicting"
+      ],
+      "candidateEvidenceIds": [
+        "s1/r14@1#1fa1fd3735db77f76c92d4f8bc1d89fc2ff65ab97424b54470a5302dca0e20e0",
+        "s1/r14@1#4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9",
+        "s1/r14@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924"
+      ]
+    },
+    "decision": {
+      "value": "Unknown",
+      "causes": [
+        "Conflicting"
+      ]
+    },
+    "causeAttribution": [
+      {
+        "cause": "Conflicting",
+        "origin": "s1/r14",
+        "stage": "S1",
+        "reason": "PayloadConflict"
+      }
+    ],
+    "needs": {
+      "evidence": {
+        "key": {
+          "query": "q.demo",
+          "contractDigest": "d1",
+          "subject": "P1",
+          "episode": "E1",
+          "encounter": "N1"
+        },
+        "causes": [
+          "Conflicting"
+        ]
+      },
+      "deferred": null,
+      "obligations": [
+        {
+          "kind": "CorrectRecord",
+          "needKey": {
+            "query": "q.demo",
+            "contractDigest": "d1",
+            "subject": "P1",
+            "episode": "E1",
+            "encounter": "N1"
+          },
+          "record": "s1/r14"
+        }
+      ]
+    },
+    "traceAssertions": [
+      {
+        "fact": "variants",
+        "ref": "s1/r14@1",
+        "value": [
+          "s1/r14@1#1fa1fd3735db77f76c92d4f8bc1d89fc2ff65ab97424b54470a5302dca0e20e0",
+          "s1/r14@1#4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9",
+          "s1/r14@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924"
+        ]
+      }
+    ]
+  }
+}

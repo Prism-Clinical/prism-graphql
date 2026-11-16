@@ -1,0 +1,347 @@
+# First PPL program: minimal implementation contract
+
+**Status:** Proposed implementation contract for the first compiler subset and the evaluation increments that follow it. Increments I1 (compiler and preview compiler), I2 (isolated program-expression execution over supplied query results) and I3 (S3 admissibility per possible revision: the three rules and their combination, evidence-query contract §2.4–§2.7) are implemented experimentally in [libs/pathway-language](../../../../libs/pathway-language/README.md), and so is I4 (2026-10-29): S4 selection (evidence-query contract §2.8), S5 criterion evaluation and classification for one record at a time (§3.5, §3.6), key-level possible classes (§3.7) and query-bound preview evaluation of whole-criterion holes (§3.5 Preview evaluation), which produces EA-052a’s two preview `criterion` facts. Every acceptance item in the I4 row of section 8 is checked and passes; this completes the experimental increment only. I5 (S6) has five slices implemented experimentally: gap relevance (evidence-query contract §4.1, 2026-10-29), the step A base result (§4.2 step A, 2026-11-02), step B materiality of unresolved records (§4.2 step B, 2026-11-02), the step C cause union and attribution (§4.2 step C, 2026-11-02) and the final `Evidence<Boolean>` with `candidateEvidenceIds` (§5.1 “Query evidence boundary”, 2026-11-02). Every acceptance item of the I5 row is checked and passes, and after review (2026-11-02) **I5 is complete as an experimental increment**, with the documented S1 fork-fallback limitation (EA-083/EA-092) retained. Query evidence can now be computed from a bound raw-record evaluation. Program execution from raw records is supported on two paths described below: normal execution of a compiled program with one or more EvidenceQueries, and preview of a program with holes and one or more EvidenceQueries, each holed or complete. Programs with zero queries, Needs and acquisition are not executed. The S7 projection of one query’s evidence to a `Decision` (evidence-query contract §5.2 “Query decision boundary”, 2026-11-02) is implemented experimentally with the executor’s own `evidenceValue` projection; it runs no program. A bounded I6 slice (2026-11-03, section 8 “Raw-input execution boundary”) executes a program with exactly one complete EvidenceQuery over that query’s evidence computed from raw records; PPL-01 to PPL-03 pass from their raw inputs. It was extended (2026-11-09) to programs with several complete queries over one shared snapshot, each computed under its own contract; PPL-07a–d pass from their raw inputs. A second bounded I6 slice (2026-11-05, extended 2026-11-06; section 8 “Raw-input preview boundary”) previews a program with one or more EvidenceQueries from raw inputs (several queries added 2026-11-11), each over one captured input: a holed query stays a marker (PPL-04 passes from its raw inputs), a complete query beside holes elsewhere is computed by the full S1–S6 pipeline (PPL-06a–c pass), and a program can mix both (PPL-08a–c pass). After the milestone split of 2026-11-11 (section 8, “I6 split”), **I6 is program execution and preview from raw inputs, and it is complete as an experimental increment**. Needs generation is the separate increment I7, which is **not implemented**. Acquisition and conflict resolution are later work outside this implementation sequence. The language-structure decisions P1–P8 (section 9) were approved by the user on 2026-10-05 for this subset and are reflected in Stage A and the minimal model. That approval leaves the broader documents’ status unchanged. No clinical question is answered, and the RFC, Stage A, the evidence-query contract, the GERD drafts and every delivery story keep their statuses.
+
+**Date:** 2026-10-05. **Revised:** 2026-10-05, resolving P1–P8. Need generation is deferred, and the evaluator roadmap is split into bounded increments. 2026-11-11: I6 is narrowed to program execution and preview and closed as an experimental increment; Needs generation becomes I7 (section 8). Later the same day, the I7 identity proposal (contract digest and Need key, proposed) is linked from I7, and I7 is given lifecycle and fulfillment-validation sub-slices.. 2026-11-12: the proposal's decisions are reviewed. 2026-11-13: the identity sub-slice is implemented experimentally, then the single-query existence and deferral sub-slice is specified and implemented experimentally; I7 stays incomplete. No semantics change.
+
+**Authority:**
+
+- [RFC](../../specs/2026-09-28-pathway-language-rfc.md);
+- [Stage A](../../specs/2026-09-30-pathway-language-stage-a-spec.md) §2.2–2.3, §4.1–4.5, §5, §6.3 and §10–11, amended 2026-10-05 for P1–P8;
+- [minimal GERD language model](gerd-minimal-language-model.md);
+- [evidence-query contract](evidence-query-to-predicate-contract.md), whose semantics, including Needs, are unchanged.
+
+**Language direction.** PPL is one language, written as a typed JSON source model. It borrows CQL-inspired typed pure expressions over explicitly retrieved evidence, and restricted acyclic Datalog-style derivation: one defining rule per declaration over explicit references. It embeds no CQL or Soufflé program and uses neither runtime.
+
+## 1. Problem
+
+**Given:**
+
+- a program source: [`gerd-progressive-dysphagia.ppl.json`](programs/gerd-progressive-dysphagia.ppl.json) or [`schematic-demo-finding.ppl.json`](programs/schematic-demo-finding.ppl.json), with an example’s `patch` applied;
+- the pinned catalogues the program names: `demo-model@0.1` (fields per [CANONICALIZATION.md](conformance/explicit-assertion-v0/CANONICALIZATION.md)), the program’s `valueSets`, authority rule `demo-policy/same-source-amend@1` and policy `explicit-assertion-v0`;
+- for evaluation, a frozen snapshot and an evaluation context in the explicit-assertion-v0 fixture `input` format.
+
+**Produce** exactly the `expected` block of each [acceptance example](programs/examples/), from these entry points (Stage A §11.2):
+
+```text
+compile(source)                    -> CompileFailure{diagnostics} | CompiledPackage   (source: a parsed JSON value)
+compilePreview(source)             -> CompileFailure{diagnostics} | PreviewPackage{markers}
+evaluate(package, input)           -> per-declaration outputs, causeAttribution, trace
+evaluatePreview(preview, input)    -> the same, with incomplete-authoring markers
+```
+
+## 2. Declarations, expression forms and context
+
+Only what the two programs use. Anything else fails compilation with a named code (section 5). `sourceStatus`, `rationale`, `quote`, `label`, `heading` and `explains` are non-executable text.
+
+| Declaration | Required fields | Output type |
+|---|---|---|
+| `EvidenceReference` | `id`, `file`, `sha256`, `lines`, `quote` | None. Provenance only; never affects a result and never creates an executable dependency |
+| applicability (`Predicate`; the required top-level `applicability`) | `id`, `expr` (Decision) | `Decision`. A missing applicability is `SOURCE_INVALID` and is never defaulted |
+| `EvidenceQuery` | `id`, `subject: "patient"` (the evaluation context’s subject), `output: "Evidence<Boolean>"`, `contract` | `Evidence<Boolean>` |
+| `Predicate` | `id`, `expr` | `Decision` |
+| `Finding` (Stage A §5, P4) | `id`, `status` (Decision), `label`; optional `heading`, `urgency`, `cites` | `status: Decision`; attributes |
+
+Identifiers are unique strings. They must not start with `ctx.`; a violation is `INVALID_DECLARATION_ID`.
+
+| Expression form | Allowed position | Operands | Result |
+|---|---|---|---|
+| `{"ref": id}` | Any Decision or Evidence position | `applicability`, a Predicate or an EvidenceQuery. A Finding is not referenceable in this subset | The target’s output type |
+| `{"evidenceValue": E}` (P1) | `Predicate.expr` | `E : Evidence<Boolean>` | `Decision` |
+| `{"all": [D₁ … Dₙ]}`, *n* ≥ 0 (P2) | applicability, `Predicate.expr`, `Finding.status` | each `Dᵢ : Decision` | `Decision` |
+| `{"hole": {"id", "type", "explains", "cites"?}}` (P6) | applicability `expr` (`Decision`), `EvidenceQuery.contract` (`EvidenceSelectionContract<Boolean>`), a whole `contract.establishes` or `contract.refutes` (`Decision`; see below), `Finding.urgency` (`UrgencyRequirement`) | — | The declared `type`, which must equal the position’s type (else `TYPE_MISMATCH`). A missing or empty `explains` is `SOURCE_INVALID` |
+
+**Inside an explicit-assertion-v0 contract only:** the contract has exactly the structure of [`q.demo.json`](conformance/explicit-assertion-v0/query/q.demo.json), and its fragment is the contract’s (§3.1, §2.2).
+
+- Expression forms: `{"field": ["c", f]}`, `{"enum": "T.v"}`, `{"eq": [a, b]}` and `{"in": [...]}`.
+- `admissible` rules are recognized by exact shape, as the S3 encounter check already does with `SAME_ENCOUNTER_RULE`: `encounter` and `episode` are `eq(c.f, ctx.f)`, and `assertionKind` is `in` over `AssertionKind` values.
+- `establishes` and `refutes` are type-checked as `eq(c.assertion, AssertionValue.v)`; a cross-enum comparison is `TYPE_MISMATCH`. **Subset restriction:** criteria compare `c.assertion` only. A criterion on any other field, even a declared enum field such as `c.assertionKind`, is `UNSUPPORTED_CONSTRUCT` at the `field` operand. Widening this waits until a program needs it.
+- `disjoint(establishes, refutes)` holds for two such equalities with different literals. Equal literals give `EXCLUSIVE_BRANCH_OVERLAP`. Any other form gives `UNSUPPORTED_PROOF_FRAGMENT`, which the `c.assertion` restriction makes unreachable in I1.
+- **Whole-criterion hole** (2026-10-29; evidence-query contract §6.1, case 52). `establishes`, `refutes` or both may each be one hole in the table’s syntax, replacing the **whole** criterion.
+  - **Type.** `Decision`: a criterion’s result type over the bound candidate `c` (evidence-query contract §3.1–§3.2). The position fixes the binding, so the hole declares no further scope. `explains` is required and an `over` member is an unknown property (P6). EA-052a and EA-052b were corrected to this syntax on 2026-10-29 (`over` removed, `explains` added; expected outcomes unchanged).
+  - **Diagnostics.** As for every hole: a wrong `type` is `TYPE_MISMATCH` at the hole, and a missing or blank `explains` is `SOURCE_INVALID`. A hole *inside* a criterion (an `eq` operand, or under `not`/`all`) is `UNSUPPORTED_CONSTRUCT` at the criterion.
+  - **No hidden errors.** The sibling criterion and every other contract setting are validated exactly as in a complete contract, so a hole never hides an error.
+  - **Normal compilation.** Fails with one `UNRESOLVED_AUTHORING_HOLE` per hole, at the `hole` member, and stays `wellFormed: true`.
+  - **Preview representation.** The contract has kind `explicit-assertion-v0-incomplete`, never present in a `CompiledPackage`, with the complete contract’s settings. Each criterion is `{kind: "complete", criterion}` (the complete contract’s criterion object) or `{kind: "hole", hole, location}`.
+  - **Pending disjointness.** `disjointness: {status: "Pending", holes, locations}`. The obligation is neither proved nor an overlap, and no value is assumed for the hole. A complete contract has no such field: its obligation is proved, or compilation fails.
+- Any other form in these positions is `UNSUPPORTED_CONSTRUCT`.
+
+**Context bindings (P3).** `ctx.` is reserved for evaluation-context bindings.
+
+| Context name | Type | Supported position in this subset |
+|---|---|---|
+| `ctx.episode` | `Known(EpisodeRef) \| Unknown(NonEmptySet<Cause>)` (contract §1.6) | Second operand of `contract.admissible.episode` |
+| `ctx.encounter` | `Known(EncounterRef) \| Unknown(NonEmptySet<Cause>)` (contract §1.6, §2.4) | Second operand of `contract.admissible.encounter` |
+
+Any other `ctx.` name, or a supported name in any other position, is `UNSUPPORTED_CONTEXT_REFERENCE`. The positional restriction is a capability limit of this subset, not a permanent rule of the language (Stage A §2.2).
+
+`UrgencyRequirement` has no defined shape. In this subset its only legal value is a hole, and any other value is `UNSUPPORTED_CONSTRUCT`.
+
+## 3. Semantics
+
+**Dependencies and order (P5).** Authored references are the only executable dependencies (Stage A §2.2).
+
+- Each `{"ref": id}` to a declaration is one edge, reader → read. `ctx.*` references are context bindings, not edges. `cites` are non-executable.
+- There is no stored edge list, and an editor edits the references themselves.
+- The derived graph must be acyclic, else `CYCLIC_EXECUTION_DEPENDENCY`. Evaluation follows any topological order, and no result may depend on tie-breaking.
+- The examples state the derived edges (`dependencyEdges`), not an order.
+
+**Expressions.**
+
+- `evidenceValue` (contract §5.2):
+  - `Known(true, ids)` → `True` with `supportingEvidenceIds = ids`;
+  - `Known(false, ids)` → `False` with `ids`;
+  - `Unresolved(C, cids)` → `Unknown(C)` with `candidateEvidenceIds = cids`.
+- `all` (P2; Stage A §4.3):
+  - any `False` operand gives `False`, supported by the union of the `False` operands’ supports;
+  - else, any `Unknown` gives `Unknown` with the union of those operands’ causes and candidate IDs;
+  - else `True`, supported by the union of all supports;
+  - `all()` is `True` with empty support;
+  - every operand’s trace is kept even when one operand decides.
+- `Finding` (P4): its status is the value of `status`. Attributes are reported verbatim, and an attribute hole marks only that attribute.
+
+**EvidenceQuery.** S1 → S2 → S3 → S4 → S5 → S6 of the evidence-query contract (§2) produce `Evidence<Boolean>`. S7 is the `evidenceValue` in the Predicate.
+
+**Not in this slice: Need generation.** The first program reports unresolved patient evidence through:
+
+- the query’s `Unresolved` causes;
+- `causeAttribution`;
+- the resulting predicate and finding states;
+- the trace.
+
+It does **not** generate Needs or any other acquisition request. The evidence-query contract’s Need and materiality semantics (§4.2 step B, §6.2) are unchanged and remain unimplemented. No simplified substitute is defined. Authoring holes never become patient-data requests in any mode (Stage A §2.3). Need generation is planned as increment I7 (section 8, “Needs generation (I7)”), not implemented.
+
+## 4. Output shape promised by the examples
+
+| Field | Content | Comparison |
+|---|---|---|
+| `state` | `InvalidProgram`, `IncompleteAuthoring`, `UnresolvedPatientEvidence`, `EstablishedFalse` or `EstablishedTrue` (below) | Exact |
+| `compile` | `outcome` (`Compiled` / `CompileFailure`), `wellFormed`, `diagnostics`, `dependencyEdges` | Outcome and `wellFormed` exact; diagnostics per section 5; edges as a set |
+| `preview` | `null`, or `outcome`, `publication: "Blocked"`, `markers` (`{output, holes}`) and `inspectable` attributes | Exact; markers and holes as sets |
+| `outputs` | Per declaration: `decision` / `evidence` (contract §5.1–5.2 shapes), or `marker: {holes}`, with `supportingEvidenceIds` / `candidateEvidenceIds`. A Finding has `status` and attribute entries | Exact; ID lists as sets, written in canonical order |
+| `causeAttribution` | Contract format (`cause`, `origin`, `stage`, `reason`) | As a set |
+| `trace` | One entry per evaluated output: `output`, `source` (JSON Pointer), `result`, `because` | `output`, `source`, `result` exact; `because` informative |
+
+| `state` | Defined by | Consequences |
+|---|---|---|
+| **InvalidProgram** | Any structural diagnostic (section 5, every code except `UNRESOLVED_AUTHORING_HOLE`) | `compile` and `compilePreview` both fail; no outputs |
+| **IncompleteAuthoring** | Well-formed with at least one hole | `compile` fails with `UNRESOLVED_AUTHORING_HOLE` only, one per hole, with `wellFormed: true`. `compilePreview` succeeds, dependents carry markers, and publication and clinical execution are blocked. Never a patient cause or a data request |
+| **UnresolvedPatientEvidence** | Compiled; Finding status `Unknown(causes)` | Causes and attribution reported |
+| **EstablishedFalse** | Compiled; Finding status `False` | Under explicit-assertion-v0 this needs an explicit refuting record and no relevant gap. Absence of records never yields it (PPL-03) |
+| **EstablishedTrue** | Compiled; Finding status `True` | Supporting evidence IDs reported |
+
+Successful compilation confers no clinical approval (P8).
+
+## 5. Diagnostic contract (P7)
+
+Each diagnostic has `code`, `location` (a JSON Pointer into the authored source, to the offending value), optional `hole` (for `UNRESOLVED_AUTHORING_HOLE`) and optional `message`. Machine comparison uses `code`, `location` and `hole`. `message` is explanatory prose and is never compared.
+
+| Code | Source | Meaning | Location |
+|---|---|---|---|
+| `SOURCE_INVALID` | Added | Missing required field or top-level section (including `applicability`); a field of the wrong JSON shape; unsupported `languageVersion` or capability profile; hole without `explains` | The missing or malformed member (its parent for a missing one) |
+| `UNKNOWN_EXECUTABLE_PROPERTY` | Added (Stage A §2.2 rule) | Unknown declaration kind, executable property or expression form | That property or form |
+| `INVALID_DECLARATION_ID` | Added | Duplicate identifier, or one starting with `ctx.` | The `id` value |
+| `UNDEFINED_REFERENCE` | Added | A `ref` or `cites` entry names no declaration or reference; a `retrieve.valueSet` names no entry of `valueSets`; or a criterion names a field or enum value the pinned evidence model (`demo-model@0.1`) does not declare | The `ref` value, `cites` element or `valueSet` value; for a catalogue name, the `field` or `enum` member |
+| `TYPE_MISMATCH` | Added | An operand, hole or referenced output has the wrong type for its position (including cross-enum equality) | The operand or hole |
+| `UNSUPPORTED_CONTEXT_REFERENCE` | Added | Unknown `ctx.` name, or a supported name outside its supported position (section 2) | The `ref` value |
+| `UNSUPPORTED_CONSTRUCT` | Added | A recognized language construct outside this subset (e.g. another admissible-rule shape, or non-hole urgency) | The construct |
+| `CYCLIC_EXECUTION_DEPENDENCY` | Stage A §10.4 | The derived dependency graph has a cycle | One `ref` on the cycle (the one with the smallest JSON Pointer) |
+| `EXCLUSIVE_BRANCH_OVERLAP` | Stage A §10.4 | `disjoint(establishes, refutes)` has a witness (equal literals) | The `obligations` element |
+| `UNSUPPORTED_PROOF_FRAGMENT` | Stage A §10.4 | `disjoint` cannot be analyzed for the written criteria | The `obligations` element |
+| `UNRESOLVED_AUTHORING_HOLE` | Stage A §10.4 | A hole remains. Normal compilation only; not structural | The `hole` member |
+
+These codes apply to authored first-program sources. The legacy explicit-assertion-v0 compilation fixtures (EA-051a/b, `code: null`) are not rewritten in this task.
+
+## 6. Compilation versus evaluation
+
+| Check | Phase |
+|---|---|
+| Required sections and fields, shapes, versions, `explains` present | Compile (`SOURCE_INVALID`). The compiler takes a parsed JSON value; text-level parsing, such as duplicate member names, is outside this subset |
+| Known kinds, properties and forms; supported subset | Compile (`UNKNOWN_EXECUTABLE_PROPERTY`, `UNSUPPORTED_CONSTRUCT`) |
+| Identifiers; `ref` and `cites` resolve; context names and positions | Compile (`INVALID_DECLARATION_ID`, `UNDEFINED_REFERENCE`, `UNSUPPORTED_CONTEXT_REFERENCE`) |
+| Types, hole types, contract fragment, `disjoint` | Compile (`TYPE_MISMATCH`, `EXCLUSIVE_BRANCH_OVERLAP`, `UNSUPPORTED_PROOF_FRAGMENT`) |
+| Acyclic derived edges | Compile (`CYCLIC_EXECUTION_DEPENDENCY`) |
+| Holes | Compile: `UNRESOLVED_AUTHORING_HOLE` in normal mode, markers in preview mode |
+| Citation digests and quotations against pinned files | Not in this compiler subset. `programs/check.py` checks them mechanically for now |
+| Revision history, candidacy, admissibility, selection, criteria, sufficiency | Evaluate |
+| `evidenceValue`, `all`, Finding status | Evaluate |
+| Malformed patient data | Evaluate: patient evidence, never a compile error |
+
+## 7. Preview (P8)
+
+- `compilePreview` accepts structurally valid, correctly typed holes. Any structural diagnostic fails it, exactly as in normal compilation.
+- An output is **marked** if and only if its defining expression contains a hole or references a marked output; its marker lists the union of those holes. Kleene composition never removes a marker (`all(False, marked)` stays marked).
+- An attribute hole marks only that attribute (`f.alarm.urgency`).
+- A marked EvidenceQuery runs no evidence stage (EA-050) and produces no patient cause.
+- An EvidenceQuery with a whole-criterion hole is marked with its criterion holes, and so are its dependents. Its contract stays inspectable: settings, the complete sibling criterion and pending disjointness. Preview evaluation (evidence-query contract §3.5 Preview evaluation, §6.1; implemented experimentally) runs S1–S4 from the query’s complete settings and the sibling criterion over each eligible possibility, and reports a `Marker` for each hole slot; the query marker survives an empty snapshot, disjointness stays `Pending`, and nothing is classified, resolved or requested. A whole-contract hole runs no stage there either. Isolated execution over supplied results (I2) treats the query as marked and refuses a supplied result for it (`RESULT_FOR_HOLED_QUERY`). Raw-input preview (section 8) runs that same preview evaluation and passes only the query’s marker to the program evaluator. A complete query in a preview package is not marked: raw-input preview computes its evidence with S1–S6, and holes elsewhere keep their markers.
+- Unmarked outputs evaluate with ordinary patient-evidence semantics. Static attributes (`label`, `heading`, `cites`) stay inspectable.
+- Markers are never patient uncertainty. Publication and clinical execution stay blocked whenever any hole exists.
+
+## 8. Implementation sequence
+
+Each increment is pure library code in `libs/pathway-language`. No increment hard-codes acceptance fixture IDs. Behavior outside an increment fails explicitly as unsupported and is reported as such, never as passing. A happy-path subset is never described as conformance to the full explicit-assertion-v0 policy.
+
+| # | Input | Observable output | Acceptance | Reuses |
+|---|---|---|---|---|
+| **I1. Compiler (next)** | Program source with an example’s patch applied | `compile` / `compilePreview` results: diagnostics, `wellFormed`, derived edges, preview markers | The `compile` and `preview` blocks of PPL-01 to PPL-05b, plus one independent test per section 5 code (cycle, unknown property, reserved or duplicate ID, wrongly typed hole, unknown or misplaced `ctx.` reference, missing applicability, missing `explains`, non-hole urgency, overlapping `disjoint`) | `SAME_ENCOUNTER_RULE` and `canonicalJson` for exact-shape recognition, as the encounter check does |
+| **I2. Program-expression execution, isolated** | A compiled or preview package, plus a typed `Evidence<Boolean>` supplied directly for each EvidenceQuery | `evidenceValue`, `all` and Finding outputs, with markers and trace | Kleene and support/cause unit tests. PPL-04’s `evaluatePreview` outputs (complete, since a marked query reads no evidence). PPL-01 to PPL-03 applicability, predicate and finding outputs, given those examples’ expected query evidence. **Isolated tests, not end-to-end pathway runs** | I1 |
+| **I3. S3 admissibility** | S1 result, S2 parameters, the contract’s three `admissible` rules, context | Per possibility: per-rule outcomes, and combined admissibility (contract §2.7: any mismatch is `Inadmissible` with unresolved findings kept; else any unresolved rule is `UnresolvedAdmissibility`; else `Admissible`). No key-level outcome | The `encounterScope`, `episodeScope`, `assertionKindScope` and `admissibility` trace facts of explicit-assertion-v0 fixtures, including partial-stage (`stage-v1`) cases 119–124; independent tests. **Implemented experimentally.** The S4–S6 consequence of a revision that is `Inadmissible` beside an unresolved rule is left to I4–I5 | S1, S2, the encounter check |
+| **I4. S4–S5** | I3 output, `establishes`, `refutes` | Selection (selected / unresolved / inadmissible keys, per contract §2.8); per-revision criterion values and classification | S4: the `selection` and `disposition` facts of partial-stage cases 125–129, and the one-way check that every `Known` support is selected; **S4 implemented experimentally**, with the evidence handoff that gives S5 each checked revision’s exact payload from the same evaluation (evidence-query contract §2.8). S5: the `criterion`, `classification` and `possibleClasses` facts of explicit-assertion-v0 fixtures. **Per-record criterion evaluation implemented experimentally** (§3.5): `establishes` and `refutes` over one eligible possibility, read through the handoff, checked against the `criterion` facts of partial-stage cases 130–132. The S4 result must come from query-bound selection for the same compiled package and query, which takes all authored configuration (S1 envelope and authority included) from the compiled query; S5 enforces the association (§3.5). **Per-record classification implemented experimentally** (§3.3, §3.6) through the same boundary, checked directly against every `classification` fact (EA-004, EA-006, EA-074 and partial-stage case 133). **Key-level possible classes implemented experimentally** (§4.2 step B, §3.7), checked directly against every `possibleClasses` fact: the twelve in evaluation fixtures (EA-004, EA-010, EA-011, EA-018, EA-028, EA-030, EA-062, EA-078, EA-084, EA-085, EA-088, EA-104), unchanged, and six in partial-stage case 134. Every `criterion`, `classification` and `possibleClasses` fact of a complete query is checked and passes. **Preview evaluation implemented experimentally** (§3.5 Preview evaluation, 2026-10-29): a separate entry point over an authentic `PreviewPackage` runs S1–S4 and the complete sibling criterion and gives a `Marker` for each hole slot; it produces EA-052a’s two preview `criterion` facts (`establishes` `Marker`, `refutes` True), checked directly from the fixture as written, and the normal entry points still reject preview packages. **I4 is complete as an experimental increment**: every `criterion` (24), `classification` (10) and `possibleClasses` (18) fact of the explicit-assertion-v0 fixtures and every S4 fact of cases 125–129 is checked and passes | I3 |
+| **I5. S6** | I4 output, coverage, failures, rejected items | `Evidence<Boolean>` and `causeAttribution` per contract §4 (no Needs) | The `evidence`, `cell`, `gap`, `rule` and `causeAttribution` expectations of explicit-assertion-v0 evaluation fixtures. Fixtures outside the implemented behavior are listed as unsupported. **Gap relevance implemented experimentally** (evidence-query contract §4.1 “Gap relevance boundary”, 2026-10-29): every `cell`, `gap` and `notCurrent` fact and every `ContradictoryAttestation` / `InsufficientlyScopedStatement` diagnostic is checked directly and passes, including partial-stage cases 135–136; coverage and gap cause attributions and `Known` results are checked one way (a relevant gap with that finding; no relevant gap). **Step A base result implemented experimentally** (§4.2 “Step A boundary”, 2026-11-02): every `rule` fact and every `baseCauses` fact (partial-stage cases 137–141) is checked directly and passes; each evaluation fixture's `query`-origin attributions equal the base causes; final `Known` results are checked one way against the base. Unresolved candidacy beside inadmissibility (§2.8) is an unresolved candidate (decided on review, 2026-11-02). **Step B materiality implemented experimentally** (§4.2 “Step B boundary”, 2026-11-02): every `material` fact (cases 4, 10, 11, 55a and partial-stage cases 142–144) is checked directly and passes, each record judged against the original step A base; final results are checked one way (a final `Known` survived step B; a final `Unresolved` over a `Known` base has a material record). **Step C cause union and attribution implemented experimentally** (§4.2 “Step C boundary”, 2026-11-02): for every `Unresolved` evaluation fixture (91), the fixture-format projection of each entry (cause, origin label, stage, reason and `refs` as labels) equals its `causeAttribution` as a set and the cause set equals `evidence.causes`; every `Known` one (32) reports no aggregation; no fixture is blocked. Structured origins, `keys` and entry IDs are covered by unit tests only. The two step C readings are confirmed on review (2026-11-02); the EA-083/EA-092 S1 limitation stays open. **Final `Evidence<Boolean>` implemented experimentally** (§5.1 “Query evidence boundary”, 2026-11-02): every evaluation fixture's `evidence` (123: status, value, `supportingEvidenceIds`, `causes`, `candidateEvidenceIds`, references projected to fixture notation) and partial-stage cases 145–148 are checked exactly and pass. References are structured. `Known` `provenance` (distinct acquisition provenance per supporting reference; missing provenance an explicit `null`) is confirmed on review; it is outside the fixture format and checked by unit tests only. **I5 is complete as an experimental increment** (review, 2026-11-02): every listed acceptance item passes and no fixture is unsupported. The S1 fork-fallback limitation (EA-083/EA-092) is retained: the result reports the current S1 contract and must not drive acquisition or conflict resolution. Not part of I5: the `decision` projection (S7, §5.2), since implemented separately (I6 row). Not implemented: Needs (I7). Passing computed results to the program evaluator is done in I6 | I4 |
+| **I6. Program execution and preview from raw inputs** (titled “End-to-end” until the 2026-11-11 split) | Program source plus a raw synthetic snapshot and context | Complete example outputs: program outputs, Finding attributes, trace, each query’s evidence or preview result, `causeAttribution` and state. No Needs | PPL-01 to PPL-03 from raw inputs: true, false and missing evidence. PPL-04 preview (holes and inspectable attributes preserved). PPL-05a/b failures. **Query decision (S7) implemented experimentally** (evidence-query contract §5.2 “Query decision boundary”, 2026-11-02): every evaluation fixture’s `decision` (123) is checked exactly and passes; the projection is shared with `evidenceValue`, and a parity test covers its three cases. **Raw-input execution of one-query programs implemented experimentally** (“Raw-input execution boundary” below, 2026-11-03): PPL-01 to PPL-03 pass from their raw inputs (every expected output including the query evidence, trace `source`/`result`, `causeAttribution` and `state`). **Raw-input preview of one-holed-query programs implemented experimentally** (“Raw-input preview boundary” below, 2026-11-05): PPL-04 passes from its raw inputs (every expected output and trace `source`/`result`; separately, the stages its query ran, the query marker, an empty `causeAttribution` and blocked publication). **Raw-input preview of a complete query implemented experimentally** (same boundary, 2026-11-06): PPL-06a–c (`True`, `False` and `Unknown(Missing)` beside an unrelated urgency hole) pass from their raw inputs (every expected output including the query evidence, trace `source`/`result`, `causeAttribution`, and the `IncompleteAuthoring` state with publication blocked). **Raw-input execution of multi-query programs implemented experimentally** (same boundary, 2026-11-09): PPL-07a–d (two queries differing in source scope and admissibility: both `True` over one shared revision, `Unknown(Conflicting)` beside `True`, `Unknown(Inadmissible)` beside `True`, and `False` beside `Unknown(Missing)`) pass from their raw inputs (every expected output including each query’s evidence, trace `source`/`result`, each query’s `causeAttribution`, and `state`). **Raw-input preview of multi-query programs implemented experimentally** (“Raw-input preview boundary” below, 2026-11-11): PPL-08a–c (a complete `False` query beside a criterion-holed one, an `Unknown(Conflicting)` query beside a whole-contract hole, and two incomplete queries of different hole kinds) pass from their raw inputs (every expected output and trace `source`/`result`; each complete query’s `causeAttribution`; per query its authoring state, stages run, snapshot-statement handling and, for a criterion-holed query, the per-record `establishes`/`refutes` values of its preview-query result; the `IncompleteAuthoring` state with publication blocked). PPL-05a/b fail compilation (I1 checks), so there is no package to execute. **I6 is complete as an experimental increment** (2026-11-11): every acceptance item above is checked and passes (evidence below, “I6 split”). It is not production-ready, carries no clinical approval and does not complete the broader language. The EA-083/EA-092 S1 limitation is retained. Not part of I6: Needs (I7), acquisition and conflict resolution (later work) | I1–I5 |
+| **I7. Needs generation** (added 2026-11-11; **not implemented**; only the identity and single-query existence/deferral sub-slices exist, experimentally, 2026-11-13) | A completed query evaluation (I5, as run inside I6), its context bindings and its compiled contract | The Need result of evidence-query contract §6.2: an evidence Need (key, causes) or none, a deferred binding, `ResolveConflict` and `CorrectRecord` obligations, and trace links to the evaluation. No acquisition, and no change to patient evidence | See “Needs generation (I7)” below: identity, state, existence and deferral, holes, obligations, `fulfilled_by`, determinism, and the `needs` expectations of the explicit-assertion-v0 fixtures. Its dependency on the open S1 question and its unspecified parts are recorded there | I5, I6 |
+
+**Raw-input execution boundary** (bounded I6 slice, implemented experimentally 2026-11-03; several queries added 2026-11-09). One entry point executes a compiled program over the evidence of its EvidenceQueries, each computed from one shared set of raw records.
+
+- **Input.** An authentic `CompiledPackage` (produced by the compiler in this process; copies are rejected) and one runtime envelope shared by every query: `subject`, raw `revisions` and `retractions`, `contextEncounter`, `contextEpisode` and a `snapshot` (id, coverage, failures, rejected items; evidence-query contract §1.5). The query IDs and every authored setting come from the package. No query ID, supplied result, decision, stage result, evidence ID, identity or token map, per-query snapshot or context, or override of sources, authority, terminology, admissibility, criteria or policy is accepted.
+- **Scope.** One or more complete EvidenceQueries. A package with none is rejected, and so are preview packages (multi-query preview is not supported; the preview boundary below still takes exactly one query). Example fields that are not runtime inputs of query-bound selection (`context.clock`, `context.mode`, `supersedesSnapshot`) are not read.
+- **Shared input, per-query contracts.** Before any query runs, the runtime input is read once into one stable evaluation input that every query reads: the snapshot is validated and detached, and every record, retraction and context is copied from its own data properties (review of e366fce, 2026-11-09). An accessor anywhere in them, an object or array with a non-plain prototype (which could carry inherited accessors), or a function value (canonicalization would call a function-valued `toJSON`, whose answer can change between reads; review of 32121be, 2026-11-11) is a configuration error, raised without invoking anything; this applies to one-query programs too. A data member named `toJSON` holding a JSON value is ordinary data. The copy keeps array holes, non-enumerable members, `null` prototypes and cycles, and replaces a container deeper than S1’s nesting limit with an empty one of the same kind, so S1 rejects exactly the same malformed occurrences, with the same reasons. Caller-owned objects are never frozen or read again. Each query then runs its own query-bound selection (S1–S4) from its own compiled contract (sources and correction authority, record type, value set and expansion, admissibility rules), its own S5 criteria and its own S6, so coverage, failure and rejected-item statements are judged against that query’s scope. Nothing is reused between queries: not an S1 or S4 result, and not evidence, even when two queries share a value-set pin, record type or label. Every query of the package is computed; there is no lazy evaluation.
+- **Sequence.** For each query, query-bound selection, then the final query evidence (evidence-query contract §5.1). Then the I2 expression evaluator runs once, given those evidence objects unchanged, keyed by query ID in a `Map`. The evaluator is not duplicated, and the I2 semantics (`evidenceValue` through the shared §5.2 projection, Kleene `all`, applicability, Finding independence) are unchanged. Query results are never pooled, voted on or merged before the evaluator: `all` takes support from its `False` operands if any, otherwise causes and candidates from its `Unknown` operands, otherwise support from every operand.
+- **Failure.** A configuration error in any query fails the whole call with a configuration error, and an engine invariant failure propagates unchanged. No partial program is returned, and no error becomes patient `Unknown`.
+- **Identity.** The evaluator is generic over its reference type: I2 uses fixture-notation strings, as before; this boundary uses the structured `NodeRef`s of the evidence-query pipeline. References are compared, deduplicated and ordered by the §5.3 tuple (`source`, `localId`, `revision`, digest), never by display label, so distinct identities with one label stay distinct and variant digests survive `evidenceValue`, `all`, Predicates and Findings, across queries too: when two queries cite the same revision, an expression over both lists it once, while each query keeps its own evidence, provenance and S6 trace. Display labels appear only in trace text (`result`, `because`); outputs carry the structured references. No token bridge exists.
+- **Ownership.** The evidence is computed inside the call from the given package object and inputs, per query; nothing is cached, so interleaved evaluations with identical query IDs and labels never share evidence, references or traces.
+- **Output, one query (unchanged).** `scope: 'one-query-program-from-raw-records'`: the program outputs (the query output is the computed evidence itself, with `provenance` when `Known`, and `origin: 'computed'`), Finding attributes, the program trace, `query`, the query-evidence result `queryEvidence` unchanged with its S6 trace, and what has not run (`Needs`, `Acquisition`, `Preview`, `MultiQuery`). Detached and deep-frozen.
+- **Output, several queries.** `scope: 'multi-query-program-from-raw-records'`: the same program outputs, Finding attributes, program trace and shared `snapshot` ID; `queries` (every query ID, code-point order); `queryEvidenceResults`, a list with one query-evidence result per query in that order, each unchanged with its own `query`, evidence, provenance and S6 trace (step A, B and C summaries and the cause attribution; no per-record `establishes`/`refutes` values); and what has not run (`Needs`, `Acquisition`, `Preview`). There is no singular `query` or `queryEvidence`: a consumer branches on `scope`. Query results are a list, not an object keyed by ID, so IDs such as `__proto__` stay ordinary values. Detached and deep-frozen.
+- **What the compiler can vary.** Queries can differ in source scope, value-set pin, `assertionKind` admissibility and their `establishes`/`refutes` criteria. The record type, correction authority rule and episode/encounter rules each have one supported value in this subset, so queries cannot differ in them yet; a query cannot read another query.
+- **Limitation.** The EA-083/EA-092 S1 limitation applies unchanged: the result must not drive acquisition or conflict resolution.
+
+**Raw-input preview boundary** (bounded I6 slice, implemented experimentally 2026-11-05; complete query added 2026-11-06; several queries added 2026-11-11). One entry point previews a program with one or more EvidenceQueries from raw inputs. Each query may be holed or complete; holes elsewhere in the program stay markers either way.
+
+- **Input.** An authentic `PreviewPackage` (copies, fabrications, relabelled objects and `CompiledPackage`s are rejected) and the same runtime envelope as raw-input execution: `subject`, `revisions`, `retractions`, `contextEncounter`, `contextEpisode` and a required `snapshot`. No query ID, supplied result, marker, decision, stage result, token map or override is accepted. The runtime input is read once into one stable copy exactly as for raw-input execution (“Shared input, per-query contracts” above; 2026-11-11), before any query is evaluated, so accessors, functions and non-plain prototypes are configuration errors in every branch, a whole-contract hole included, and every query, in either branch, reads only that one copy.
+- **Scope.** One or more EvidenceQueries, each (1) holed, with a shape that preview evaluation (evidence-query contract §3.5 Preview evaluation) supports (a whole-contract hole, a holed `establishes` or `refutes`, or both); or (2) complete. Case (2) was a scope restriction of the first slice (2026-11-05), lifted 2026-11-06; several queries were added 2026-11-11. Zero queries stay unsupported. No nested-hole syntax or new expression form exists.
+- **Branch.** Chosen per query from that query’s compiled contract only: no contract hole means complete. Holes elsewhere (applicability, another Predicate, a Finding urgency, another query) never make the query holed, and the branch is never inferred from the evidence (a complete query can be `Unresolved`).
+- **Ownership of a complete query** (the smallest change). The normal query pipeline accepts only a `CompiledPackage`, and its public entry points keep rejecting preview packages unchanged. An internal selection function (not exported from the package) accepts an authentic `PreviewPackage` and the ID of one of its queries whose compiled contract is complete (`explicit-assertion-v0`, no hole); any holed query is rejected. It runs the same S1–S4 selection from that contract and binds the S4 result to the exact package object and query ID, exactly like normal selection, and records it in a private set. The shared contract check of S5 and S6 accepts a `PreviewPackage` only together with an S4 result from that set bound to the same package object and query; with any other S4 result (normal, copied, from another package or for another query) it rejects the package as before. The bound S4 result never leaves the call: results are detached copies. Nothing is relabelled, no `CompiledPackage` is fabricated, the program is not recompiled, and S1–S6 run unchanged.
+- **Sequence.** Holed query: preview evaluation runs unchanged, then the one program evaluator (I2) runs with no query evidence and the stages preview evaluation actually ran. Complete query: the bound selection, then S5 and S6 unchanged (criteria, classification, possible classes, gap relevance over the snapshot statements, base result, materiality, cause attribution, `Evidence<Boolean>`), then the same program evaluator with that evidence object. Several queries: each query runs its own branch, in declaration order, from its own compiled contract over the one captured input, with a fresh selection per query and nothing reused between queries; then the program evaluator runs once with every complete query’s evidence and every holed query’s stages run. A hole in one query never prevents an independent complete query from being evaluated, and any configuration error fails the whole call (no partial program). No second interpreter exists.
+- **Stages, per shape.** Whole-contract hole: none; no stage reads the records or the snapshot statements (EA-050). Criterion hole(s): S1–S4 from the query’s complete settings, and S5 for each complete sibling criterion over each eligible possibility, with a `Marker` for each hole slot; no classification, possible classes, S6, `Evidence<Boolean>` or Need. Complete query: S1–S6, with coverage, failures and rejected items read by S6; no Need or acquisition.
+- **Program semantics.** Unchanged from I2 and section 7. A holed query’s output is its marker plus `stagesRun`; a complete query’s output is its computed evidence (with `provenance` when `Known`) and `origin: 'computed'`. Every marker survives every dependent expression: Kleene composition never removes it (a `False` operand beside a marker stays the marker), and patient input never turns it into `Unknown` or `False`. Expressions that read no hole evaluate normally, so a Finding status established by a complete query stays visible while its urgency is a marker. Program state and Finding status are distinct and can differ: `IncompleteAuthoring` describes the program (it has at least one hole), while a Finding whose expression reads no hole still evaluates to `True`, `False` or `Unknown` (PPL-06a–c: state `IncompleteAuthoring`, Finding status `True`, `False` and `Unknown`). The query’s trace entry states what ran.
+- **Authoring incompleteness versus patient uncertainty.** A marker means the program is incomplete. `Unknown` and `Unresolved` mean patient data is insufficient for a complete query or criterion. The result keeps them apart: `queryAuthoring` is `Incomplete` (with the preview-query result) or `Complete` (with the query-evidence result). Configuration errors are thrown and are neither.
+- **Identity and ownership.** The preview-query or query-evidence result is returned unchanged, with structured `NodeRef`s (variant digests included), provenance and cause attribution. For a complete query, the query-evidence trace holds the step A, B and C summaries and the attribution; it does not expose per-record S5 `establishes` and `refutes` values. It is computed inside the call; nothing is cached.
+- **Output, one query** (shape unchanged since 2026-11-06). Program outputs, Finding attributes and trace; the compiler’s markers and inspectable attributes; `queryAuthoring` and its branch’s query result; `snapshotStatements` (`ValidatedNotRead` for a holed query, `ReadByS6` for a complete one); `stagesRun`; `notRun` (holed: the evidence stages that did not run, then classification, possible classes, S6, query evidence, Needs, acquisition and multi-query execution; complete: Needs, acquisition and multi-query execution) and the remaining scope. Publication stays blocked in both branches. Detached and deep-frozen. The only change for several-query support is the `remainingScope` text, which no longer names several queries as unsupported.
+- **Output, several queries.** `scope` `multi-query-program-preview-from-raw-records`; the program outputs, Finding attributes, trace, compiler markers and inspectable attributes as above; `queries` (every query ID, in code-point order) and `queryPreviewResults`, one entry per query in that order. Each entry has its `query`, its own `queryAuthoring`, `snapshotStatements`, `stagesRun` and `notRun`, and its branch’s unchanged result (`previewQuery` or `queryEvidence`). Stages and snapshot-statement handling are reported per query only, since a mixed program has no single truthful value for either. Program-level `notRun` is Needs and acquisition. Query IDs such as `__proto__` are ordinary identities. Detached and deep-frozen.
+- **Limitation.** The EA-083/EA-092 S1 limitation applies unchanged to the selection facts and evidence in either branch, for every query. Needs, acquisition and conflict resolution are not implemented.
+
+**I6 split (2026-11-11).** I6 was titled “End-to-end”. Its acceptance never included Need generation: Needs were deferred on 2026-10-05 (section 3), and the `evidenceNeed` output was removed then (section 9), before the I6 row was written. Later status notes nonetheless listed Needs as the reason I6 was incomplete. The split makes that explicit. I6 keeps its identity, is narrowed to program execution and preview, and is closed. Needs generation becomes I7. Acquisition and conflict resolution are later work.
+
+*What I6 now covers, and the evidence.* Each claim is checked by the listed independent tests (`libs/pathway-language/src/__tests__/`) and, where named, by hand-derived examples or fixtures. **Query-pipeline fixtures** are the explicit-assertion-v0 conformance fixtures, which test one query’s stages. **Program-level examples** are the PPL examples in [programs/](programs/README.md), which test whole programs from their raw inputs (`program-examples.test.ts`).
+
+| Covered by I6 | Independent tests | Fixtures (query pipeline) | Examples (program level) |
+|---|---|---|---|
+| Evidence-to-`Decision` projection (S7), shared with `evidenceValue` | `s7-decision.test.ts`, `fixtures.test.ts`, `execute.test.ts` | Every evaluation fixture’s `decision` (123), exact | — |
+| Normal execution from raw records, one or more complete queries, each under its own contract over one shared input | `raw-execution.test.ts`, `raw-multi-query.test.ts` | — | PPL-01–03, PPL-07a–d |
+| Preview from raw records, one or more queries, each complete or holed (whole-contract or criterion hole) | `raw-preview.test.ts`, `raw-preview-complete.test.ts`, `raw-multi-query-preview.test.ts` | EA-050, EA-052a/b through the preview-query evaluator (`preview-evaluate.test.ts`) | PPL-04, PPL-06a–c, PPL-08a–c |
+| Shared input captured once (accessors, functions and non-plain prototypes rejected without invocation) and exact package/query ownership | `raw-multi-query.test.ts`, `raw-preview-complete.test.ts`, `raw-multi-query-preview.test.ts` | — | — |
+| Structured evidence identities (`NodeRef`, variant digests, colliding labels) through composition | the three raw-input multi-query and preview files above, `raw-execution.test.ts` | — | — (examples use display notation) |
+| Independent Findings evaluate normally; authoring markers propagate to dependents only and survive `all(False, marker)`; markers never become patient causes | `execute.test.ts`, `raw-preview.test.ts`, `raw-multi-query-preview.test.ts` | — | PPL-04, PPL-06a–c, PPL-08a–c |
+| Zero-query programs rejected; the compiler’s supported-language limits (section 2, section 5) unchanged | `raw-execution.test.ts`, `raw-multi-query-preview.test.ts`, `compile.test.ts` | — | PPL-05a/b (compile failures) |
+
+*Mapping of former I6 requirements.*
+
+| Former I6 requirement or status note | Destination |
+|---|---|
+| PPL-01 to PPL-03 from raw inputs (true, false, missing evidence) | I6, complete |
+| PPL-04 preview, holes and inspectable attributes preserved | I6, complete |
+| PPL-05a/b failures | I6, complete (checked by I1; there is no package to execute) |
+| “Complete example outputs”: outputs, trace `source`/`result`, `causeAttribution`, state | I6, complete for every example with a package |
+| Query decision (S7) | I6, complete |
+| Multi-query normal execution (PPL-07a–d), complete-query preview (PPL-06a–c), multi-query preview (PPL-08a–c) | I6, complete |
+| “Not done: Needs” (I6 status note, 2026-11-03 to 2026-11-11) | I7 |
+| `evidenceNeed` of the first draft (removed 2026-10-05, before the I6 row) | Not restored. The program-level materiality it needed is I7 gap G1 |
+| “Needs, acquisition and conflict resolution are not implemented” (raw-input boundary limitations) | Needs: I7. Acquisition and conflict resolution: later work |
+
+**Needs generation (I7)** (proposed increment, added 2026-11-11; **not implemented**).
+
+*Problem statement.* Given a completed query evaluation and resolved identity bindings, produce the contract-defined Need state and associated obligations, without acquiring data or changing patient evidence.
+
+*Scope.* Generation only, in the pure core (Stage A §7: “the core owns deterministic Need generation, materiality and fulfillment validation over recorded inputs”). The input is a query’s completed, query-bound evaluation (its 5.1 query evidence and S6 attribution), its context bindings and its compiled contract. Satisfying a Need through an acquisition loop is outside I7. That loop is: the orchestrator selects and dispatches a fulfiller, records the outcome, and a new evaluation revision follows. Semantics come only from the [evidence-query contract](evidence-query-to-predicate-contract.md) §6.1–§6.3 and its acceptance cases and fixtures; this increment adds none. Delivery stories F04 (stable Needs) and F05 (fulfillment and reevaluation) of the [level-3 story spec](../../specs/2026-10-01-pathway-language-level-3-story-spec.md) keep their status.
+
+*Acceptance criteria* (each from the cited contract text; none is weakened by this split):
+
+1. **Identity** (§6.2, §6.3 rows 5–6). The evidence Need of an `Unresolved` complete query has the key (query ID, contract digest, subject, episode binding, encounter binding). The cause is not part of the key. A changed contract (a new digest, e.g. the authored `assertionKind` set, §2.6), subject, episode or encounter gives a distinct key; equivalent reevaluations keep the same key.
+2. **Causes and attempts are state, not identity** (§6.2, §6.3 rows 1–3). Causes, contributing records, gap diagnostics and recorded attempts and outcomes change the Need’s state under the same key. Attempt history from superseded snapshots stays in that state.
+3. **Existence, satisfaction and deferral** (§6.1, §6.2, §6.3). A Need exists for a material `Unresolved` complete query. There is none for a `Known` result, and an open Need is satisfied when a later revision is `Known` (§6.3 row 4; case 43). If a key binding is unresolved (e.g. context episode `Unknown(Conflicting)`), no evidence Need and no dependent obligation is emitted. The result records the deferred binding instead (`needDeferred`; cases 12, 102, 103, 113a/b).
+4. **Authoring holes versus patient evidence** (§6.1; cases 50, 52). A whole-contract or criterion hole never produces a Need or an obligation, even with an empty snapshot. A marker is never a patient cause, and an `Unresolved` complete query is never treated as a hole.
+5. **Obligations** (§6.2). `ResolveConflict` (Need key + kind, with the conflicting records) applies where fulfillment needs an authorized correction or retraction of an existing record. `CorrectRecord` (Need key + kind + `RecordKey`) is emitted for each material unresolved record whose attributed causes include one from that record’s own data or history. It is never emitted for `TerminologyUnavailable`, `ContextUnknown`, an inadmissible record or a gap. No obligation is emitted under an unresolved scope (case 113).
+6. **`fulfilled_by`** (Stage A §7; contract §6.2 and §8 item 1). Fulfillment validation must check subject, scope, type, units, time, provenance and authority against the requested evidence contract. Invalid, expired or wrongly scoped responses cannot close a Need, and accepted evidence triggers a new evaluation revision. The contract defers it (fixtures test emission only), so I7 acceptance covers emission. The validation requirement is retained, not dropped, and needs its specification first (gap G6).
+7. **Deterministic and traceable** (Stage A §7, §11; contract §5.3). The same inputs give the same Need result in a canonical order, with no random ID and no evaluation revision in a key. Each Need and obligation is traceable to the evaluation that produced it: query, snapshot and the attributed causes and records.
+8. **Fixtures.** Every `needs` expectation of the explicit-assertion-v0 evaluation fixtures is checked exactly. That was 126 fixtures with a `needs` block when written: 86 evidence-Need keys with causes, 5 deferred bindings, 60 `CorrectRecord` and 2 `ResolveConflict` obligations. Case 149 (2026-11-13) adds a sixth deferral, with both bindings. The single-query sub-slice checks every evidence-Need key and causes, every deferral and every `Known` result's absence of a Need over the 124 evaluation fixtures; the 62 obligations remain unchecked. The symbolic digest `d1` is mapped as the conformance README’s open item 1 directs.
+
+*Dependency on the open S1 question (EA-083/EA-092).* The limitation is retained and **not** resolved here. Step C attributes exactly S1’s active defects. With retraction authority missing on one of two heads, EA-083 is `Missing` and `Conflicting`, while EA-092 is `Missing` only. Whether EA-092 should also be `Conflicting` is undecided (evidence-query contract §4.2 “Step C boundary”, §5.1).
+- *Can proceed now:* the Need result shape; key identity and its change rules; existence, satisfaction and deferral; the hole rule; obligation emission as the fixtures state it; determinism and trace links. EA-083 and EA-092 expect the same key and the same `CorrectRecord s1/r1` obligation, so these do not depend on the answer.
+- *Depends on settling it:* the causes recorded in a Need’s state for such histories, which differ between the two fixtures today. An I7 implementation reproduces the current S1 contract, as step C does, and must say so.
+- *Prohibited until settled:* using Need causes or cause attribution to choose, prioritize or drive acquisition, fulfillers or conflict resolution (contract §5.1 “Known S1 limitation”).
+
+*Unspecified in the existing contracts (recorded, not decided here):*
+- **G1, program-level materiality.** It is unspecified which requested outputs make a query’s Need material in a program, and how Kleene composition (e.g. `all(False, Unknown)`) affects that. Stage A §6.5 and §7 require backward dependency tracing, and level-3 F04.2.a states the expected behavior. The first-program contract removed its `evidenceNeed` rule (section 9), and the fixtures are query-level only. The preview case is open decision 5 of the [minimal language model](gerd-minimal-language-model.md).
+- **G2, contract digest.** `d1` is symbolic; the algorithm depends on the canonical source/IR schema (Stage A §17 item 7; contract §8 item 2). A bounded digest projection and structured key for this subset are **proposed, not accepted**, in the [identity proposal](need-identity-proposal.md) (2026-11-11). Its decisions O1–O5 were reviewed on 2026-11-12: the query component is package-qualified, and implementation corrections are versioned separately from specified meaning. The digest and key are implemented experimentally (2026-11-13, `experimentalNeedIdentity`; proposal section 7).
+- **G3, Need fields beyond key and causes.** Requested type, value-set requirements, units, temporal window, provenance and authority constraints, urgency and affected outputs (Stage A §7) have no representation in this subset.
+- **G4, state across revisions.** Opened, same-key and satisfied transitions and attempt history need the orchestrator attempt-event format. The §6.3 sequence has no fixture (contract §8 item 4).
+- **G5, the scope source’s own Need.** §6.2 says an unresolved binding’s source declaration emits its own Need, linked through the trace. In this subset context bindings are inputs, not declarations, so that Need has no defined producer.
+- **G6, `fulfilled_by` validation.** It is deferred (criterion 6) to the fulfillment-validation sub-slice below.
+- **G7, deduplication across queries and outputs.** Stage A §7 and level-3 F04.1.b require it; the key includes the query ID, and merging affected outputs depends on G1.
+- **G8, trace format.** No complete expected trace format is defined (conformance README, open items).
+
+*Sub-slices* (planning clarifications, 2026-11-11; all of them remain I7 requirements, and I7 is not complete):
+- **Identity** (first): the contract digest and structured Need key, specified in the [identity proposal](need-identity-proposal.md). **Implemented experimentally** (2026-11-13; proposal section 7). It does not decide whether a Need exists.
+- **Single-query existence and deferral** (second): the current-evaluation part of criterion 3 for one explicitly requested query, specified below. **Implemented experimentally** (2026-11-13).
+- **Lifecycle** (later): the parts of criteria 2 and 3 that compare revisions. These are attempt-history retention across superseded snapshots, the opened, same-key and satisfied transitions (§6.3 rows 1–4; case 43), and obligation satisfaction. They need the Need's recorded prior state as an explicit input, which depends on the orchestrator attempt-event format (gap G4). A single evaluation cannot derive them, and no schema is defined here.
+- **Fulfillment validation** (later; may become its own milestone if the orchestrator loop is needed to test it): criterion 6's `fulfilled_by` checks of subject, scope, type, units, time, provenance and authority. It needs its specification first (gap G6).
+
+*Single-query existence and deferral* (second sub-slice; boundary defined 2026-11-13, before implementation).
+
+- **Unit.** One `EvidenceQuery` that the caller explicitly requests, evaluated once. The requested query is the output whose materiality is asked about, so its own `Unresolved` result is treated as material (§6.1 “Yes, when material”). Whether a query is material to a program's other outputs is program-level backward materiality (G1) and is **not** decided here.
+- **Input.** `experimentalQueryNeed({ package, query, subject, revisions, retractions, contextEncounter, contextEpisode, snapshot })`. The fields are the runtime input of query-bound selection, with the snapshot required.
+  - `package` must be an authentic `CompiledPackage`. A `PreviewPackage` is rejected, so holes never reach this API; the rule that holes produce no Need (criterion 4) is already shown by preview evaluation.
+  - `query` must be one of the package's `EvidenceQuery` IDs.
+  - No evidence object, stage result, Need key, digest, causes, namespace or authored setting is accepted.
+- **One evaluation.**
+  - The input is read once and captured once, with the raw-execution capture.
+  - Identity comes from `experimentalNeedIdentity` and evidence from `experimentalSelectForQuery` + `experimentalQueryEvidence`. Both are computed inside the call, from the same package object, query, subject and captured bindings and records.
+  - Nothing is cached or looked up by ID across calls.
+  - All configuration checks precede the outcome, in this order: input shape (each field read once), package kind, runtime capture (records, retractions and bindings copied once; snapshot validated), the identity checks (query ownership, subject, bindings), then the selection and evidence checks. A failure throws `QueryNeedConfigurationError` and never becomes a Need, a deferral or a cause.
+- **Result** (detached, deep-frozen): `{ experimental, query: { package, id }, snapshot, queryEvidence, need, notImplemented }`. `notImplemented` is the constant list `Obligations`, `Lifecycle`, `FulfilledBy`, `ProgramMateriality`, `Acquisition`.
+  - `queryEvidence` is the unchanged `experimentalQueryEvidence` result, carrying the evidence and the S6 trace with its attribution. Together with `query` and `snapshot`, it links the result to its evaluation.
+  - `need` is one of:
+
+| Query evidence | Key bindings | `need` |
+|---|---|---|
+| `Known(true)` or `Known(false)` | any well-formed | `{ kind: 'none' }` |
+| `Unresolved{causes}` | both `known` | `{ kind: 'evidence', key, causes }`: `key` from `experimentalNeedIdentity`; `causes` exactly the evidence's causes, in their established order |
+| `Unresolved{causes}` | `episode` and/or `encounter` `unknown` | `{ kind: 'deferred', unresolvedBindings }`: every unresolved binding, `episode` before `encounter`; no key, no evidence Need |
+| any | malformed | configuration error |
+
+  An evidence Need is **current-evaluation state only**: it is not labelled Opened, Reopened, same-key or Satisfied, because those need prior state (lifecycle sub-slice). No Need is emitted for the context binding's source declaration (G5).
+- **Fixture fields checked.** For each evaluation fixture whose query compiles:
+  - the existence of `needs.evidence`;
+  - its key components: `query` as `{ package: "fixture", id }`, using the runner's fixed test namespace. Each symbolic digest (`d1`, `d-ak1`) must map to exactly one computed digest, and different symbols to different digests;
+  - its `causes`;
+  - `needs.deferred` (`{"binding": b}` means `[b]`; `{"bindings": [...]}` lists several);
+  - `needDeferred` trace facts;
+  - no evidence Need for `Known` results.
+
+  **Unchecked:** `needs.obligations` (`CorrectRecord`, `ResolveConflict`), and therefore no whole `needs` block is reported as passing.
+- **Deferred and not implemented:**
+  - obligations (criterion 5): the absence of an obligation in this result never means “no correction required”;
+  - lifecycle transitions and attempt history (criteria 2–3, G4);
+  - `fulfilled_by` (criterion 6, G6);
+  - program-level materiality and deduplication across queries (G1, G7);
+  - the scope source's own Need (G5);
+  - fulfiller selection, acquisition and dispatch.
+
+  Causes are reported exactly as S6 attributes them, including the EA-083/EA-092 limitation, and must not be used to choose acquisition or conflict resolution.
+
+*Later work, outside I6 and I7:* the acquisition loop (Stage A §7 steps 2–5); orchestrator dispatch, retry and deadline enforcement; EHR and provider adapters and fulfiller selection; automated conflict resolution; and the delivery stories F05 and C-01 and Stage D validation that own them.
+
+## 9. Resolved design decisions for this subset (user-approved 2026-10-05)
+
+| # | Decision | Applied in |
+|---|---|---|
+| P1 | Expression spelling `{"evidenceValue": …}`, as in the evidence-query contract. The minimal model’s `{"op": …, "arg": …}` example is updated; behavior is unchanged | Section 2; minimal model §5 |
+| P2 | `all` takes zero or more Decision operands. `all()` is `True`; a nonempty `all` follows Kleene semantics; traces stay inspectable when one operand decides. An empty `all` is explicitly authored, never a default for an omitted applicability | Sections 2–3; Stage A §4.3 |
+| P3 | `ctx.` is reserved for context bindings: declaration IDs cannot use it, and supported names are typed. In this subset, context references are allowed only at the listed contract positions, as a capability limit; anything else is rejected with `UNSUPPORTED_CONTEXT_REFERENCE` | Section 2; Stage A §2.2 |
+| P4 | Finding is an explicit declaration kind: stable ID, Decision-valued status, explanatory attributes, citations. It reports what the pathway establishes, independently of any Recommendation or action. An attribute hole does not invalidate an evaluable status. Urgency is supported only as a typed hole. Clinical urgency, finalization effects and actions are undefined | Sections 2–3; Stage A §5; minimal model §1.1 item 3, §7 decision 3 |
+| P5 | Authored references are the only executable dependencies. Edges are derived from them, an editor may edit them, and there is no second authoritative edge list. Citations and other relationships are non-executable | Section 3; Stage A §2.2; minimal model §1.1 item 4, §7 decision 4 |
+| P6 | Holes in authored source require `explains`, with identity, expected type and location preserved. An explanation records what is undecided and supplies no executable meaning. Lower-level fixtures with holes (e.g. EA-050’s inline hole) are not thereby complete authored programs, and no clinical interpretation was added to satisfy the requirement | Section 2; Stage A §2.3 |
+| P7 | Stable named diagnostic codes, using Stage A’s where they exist and adding the smallest set (section 5). Prose is separate from compared codes. PPL-05a/b now use `UNDEFINED_REFERENCE` and `TYPE_MISMATCH`; legacy fixtures are unchanged | Section 5; Stage A §10.4 |
+| P8 | Normal compilation rejects holes with `UNRESOLVED_AUTHORING_HOLE` while a hole-only program stays `wellFormed: true`. Preview accepts correctly typed holes with markers. Structural errors fail both modes. Markers are distinct from patient uncertainty. Unfinished programs stay blocked, and compilation confers no clinical approval | Sections 4, 7; Stage A §2.3 |
+
+**Removed from the first-program scope:** `evidenceNeed`, which was an output keyed on “a requested output depends on the query”. That rule and the field are gone from this contract and from the examples (section 3).

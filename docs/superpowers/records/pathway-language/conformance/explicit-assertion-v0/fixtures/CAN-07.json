@@ -1,0 +1,37 @@
+{
+  "id": "CAN-07",
+  "contractCases": [
+    19
+  ],
+  "title": "Malformed permission value kept verbatim",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"2\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u2\",\"permissions\":\"yes\"},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:2\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"2\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u2\",\"permissions\":[\"yes\"]},\"provenance\":{\"acquisition\":\"a1\",\"sourceRecordRef\":\"s1:r1:2\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": false,
+    "variants": [
+      {
+        "occurrences": [
+          0
+        ],
+        "canonicalBytes": "{\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u2\",\"permissions\":\"yes\"},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "a858101b6b91ff00768aede12e3fc4cbd3d0d6e3a93e9779fcb6bc094d6a382d"
+      },
+      {
+        "occurrences": [
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":\"Affirmed\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u2\",\"permissions\":[\"yes\"]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "55dcf9262246a236efba937a9eb6e9c1235f59ea57721ad6680e765bc003f49b"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

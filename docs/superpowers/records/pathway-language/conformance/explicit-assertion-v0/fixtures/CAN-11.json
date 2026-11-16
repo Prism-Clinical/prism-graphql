@@ -1,0 +1,53 @@
+{
+  "id": "CAN-11",
+  "contractCases": [
+    75
+  ],
+  "title": "Distinct numeric and string values stay distinct",
+  "kind": "canonicalization",
+  "evidenceModel": "demo-model@0.1",
+  "itemType": "revision",
+  "comparison": "canonicalization-v1",
+  "input": {
+    "rawOccurrences": [
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":1e23,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":9.999999999999997e+22,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":1,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}",
+      "{\"key\":{\"source\":\"s1\",\"localId\":\"r1\"},\"revision\":\"1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\",\"episode\":\"E1\",\"encounter\":\"N1\",\"concept\":{\"system\":\"demo-cs\",\"code\":\"item-x\"},\"assertion\":\"1\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"provenance\":{\"acquisition\":\"a0\",\"sourceRecordRef\":\"s1:r1:1\"}}"
+    ]
+  },
+  "expected": {
+    "equalPayload": false,
+    "variants": [
+      {
+        "occurrences": [
+          0
+        ],
+        "canonicalBytes": "{\"assertion\":1e+23,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "534871e5978d0527984963240b13f0623ae5f4e8a31dfee821ee7e279d14772f"
+      },
+      {
+        "occurrences": [
+          1
+        ],
+        "canonicalBytes": "{\"assertion\":9.999999999999997e+22,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "a80a1e87a03e17cbf425f35bd7459c4c312d8a092fd83fcefb29e306c2d6ef67"
+      },
+      {
+        "occurrences": [
+          2
+        ],
+        "canonicalBytes": "{\"assertion\":1,\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "7255a99acc8625d643f6857e2ff27dbb66202ad0dedfbc2a4d35a003b7b52875"
+      },
+      {
+        "occurrences": [
+          3
+        ],
+        "canonicalBytes": "{\"assertion\":\"1\",\"assertionKind\":\"ClinicianDocumented\",\"author\":{\"actor\":\"u1\",\"permissions\":[]},\"concept\":{\"code\":\"item-x\",\"system\":\"demo-cs\"},\"encounter\":\"N1\",\"episode\":\"E1\",\"recordType\":\"demo-model/DemoAssessment@0.1\",\"subject\":\"P1\"}",
+        "digest": "ca88e045f0dc44d5a5dcbfc73b5d8903fdfe5ffe244f7c15ccfe99ee576a01c0"
+      }
+    ],
+    "undeclaredFields": []
+  }
+}

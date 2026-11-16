@@ -1,0 +1,367 @@
+{
+  "id": "EA-133",
+  "contractCases": [
+    133
+  ],
+  "title": "Per-record classification of selected records and of payload-conflict variants",
+  "kind": "stage",
+  "policy": "explicit-assertion-v0",
+  "evidenceModel": "demo-model@0.1",
+  "query": {
+    "file": "../query/q.demo.json",
+    "contractDigest": "d1"
+  },
+  "requestedOutputs": [
+    "p.demo"
+  ],
+  "comparison": "stage-v1",
+  "input": {
+    "snapshot": "snap-1",
+    "supersedesSnapshot": null,
+    "context": {
+      "subject": "P1",
+      "episode": {
+        "known": "E1"
+      },
+      "encounter": {
+        "known": "N1"
+      },
+      "clock": "2026-01-01T00:00:00Z",
+      "mode": "nonclinical"
+    },
+    "records": [
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133a"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133a:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133b"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133b:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133c"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Indeterminate",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133c:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133d"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133d:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133e"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133e:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133f"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Affirmed",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a0",
+          "sourceRecordRef": "s1:r133f:1"
+        }
+      },
+      {
+        "key": {
+          "source": "s1",
+          "localId": "r133f"
+        },
+        "revision": "1",
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "episode": "E1",
+        "encounter": "N1",
+        "concept": {
+          "system": "demo-cs",
+          "code": "item-x"
+        },
+        "assertion": "Denied",
+        "assertionKind": "ClinicianDocumented",
+        "author": {
+          "actor": "u1",
+          "permissions": []
+        },
+        "provenance": {
+          "acquisition": "a1",
+          "sourceRecordRef": "s1:r133f:1"
+        }
+      }
+    ],
+    "retractions": [],
+    "coverage": [
+      {
+        "id": "cov-all",
+        "appliesTo": {
+          "snapshot": "snap-1"
+        },
+        "recordType": "demo-model/DemoAssessment@0.1",
+        "subject": "P1",
+        "sources": [
+          "s1",
+          "s2"
+        ],
+        "status": "Complete",
+        "attestedBy": "demo-adapter@1"
+      }
+    ],
+    "failures": [],
+    "rejectedItems": []
+  },
+  "expected": {
+    "stages": [
+      "S1",
+      "S2",
+      "S3",
+      "S4",
+      "S5"
+    ],
+    "traceAssertions": [
+      {
+        "fact": "selection",
+        "ref": "s1/r133a",
+        "value": "Selected",
+        "selected": "s1/r133a@1"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133a@1",
+        "value": "Selected"
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133a@1",
+        "value": "Supporting"
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r133b",
+        "value": "Selected",
+        "selected": "s1/r133b@1"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133b@1",
+        "value": "Selected"
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133b@1",
+        "value": "Refuting"
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r133c",
+        "value": "Selected",
+        "selected": "s1/r133c@1"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133c@1",
+        "value": "Selected"
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133c@1",
+        "value": "NonInformative"
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r133d",
+        "value": "Selected",
+        "selected": "s1/r133d@1"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133d@1",
+        "value": "Selected"
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133d@1",
+        "value": "Unclassified",
+        "causes": [
+          "Missing"
+        ]
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r133e",
+        "value": "Selected",
+        "selected": "s1/r133e@1"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133e@1",
+        "value": "Selected"
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133e@1",
+        "value": "Unclassified",
+        "causes": [
+          "Invalid"
+        ]
+      },
+      {
+        "fact": "variants",
+        "ref": "s1/r133f@1",
+        "value": [
+          "s1/r133f@1#4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9",
+          "s1/r133f@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924"
+        ]
+      },
+      {
+        "fact": "selection",
+        "ref": "s1/r133f",
+        "value": "Unresolved",
+        "unresolvedBy": [
+          "HistoryUnresolved"
+        ]
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133f@1#4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9",
+        "value": "NotSelected",
+        "blockers": [
+          "HistoryUnresolved"
+        ]
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133f@1#4a075443572495c93763b4266b06428cefcfbb9b0d8d4ebb78c923eee68182b9",
+        "value": "Refuting"
+      },
+      {
+        "fact": "disposition",
+        "ref": "s1/r133f@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+        "value": "NotSelected",
+        "blockers": [
+          "HistoryUnresolved"
+        ]
+      },
+      {
+        "fact": "classification",
+        "ref": "s1/r133f@1#b9f5d4d1fefb1745e35f52708a2437d050ab5df8f4da9451400e413bc8363924",
+        "value": "Supporting"
+      }
+    ]
+  }
+}
